@@ -10,14 +10,13 @@ function Invoke-MantisConstructor {
         }
         $ChildrenScriptBlock = {
             param($parent)
-            Write-Object $Parent -ForegroundColor DarkGreen
             Get-ADOrganizationalUnit -Server $parent.Server -SearchBase $parent.Handler -Filter * -SearchScope OneLevel -ea SilentlyContinue | %{
                 @{
                     Name = $_.Name
                     Server = $parent.Server
                     Handler = $_.DistinguishedName
                     ToolTipText = $_.DistinguishedName
-                    ForeColor = [system.Drawing.Color]::DarkGray
+                    ForeColor = [System.Drawing.Color]::DarkBlue # ::FromArgb(64,64,64)
                 }
             }
         }
@@ -40,7 +39,7 @@ function Invoke-MantisConstructor {
                     ToolTipText = $_.DistinguishedName
                     ForeColor = [system.Drawing.Color]::DarkRed
                 }
-            } | Update-TreeView -treeNode $Global:ControlHandler['TreeForest'] -ChildrenScriptBlock $ChildrenScriptBlock -Depth 1
+            } | Update-TreeView -treeNode $Global:ControlHandler['TreeForest'] -ChildrenScriptBlock $ChildrenScriptBlock -Depth 0
             # $mantis.Domain('pep64.org').Servers.get()
             
         } catch {
@@ -48,6 +47,7 @@ function Invoke-MantisConstructor {
         }
     }
     end {
+        Start-WatchTimer -ticks 250
     }
 }
 

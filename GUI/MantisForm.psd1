@@ -26,10 +26,10 @@
             }
             Write-LogStep 'Load',$this.name  ok -logTrace $Global:ControlHandler['RichTextBox_Logs']
             $this.TopMost = $false
-            Invoke-MantisConstructor
         }
-        Activated = [Scriptblock]{ # Event
-            Invoke-EventTracer $this 'Activated'
+        Shown = [Scriptblock]{ # Event
+            Invoke-EventTracer $this 'Shown'
+            Invoke-MantisConstructor
         }
         KeyDown = [Scriptblock]{ # Event
             Invoke-EventTracer $this 'KeyDown'
@@ -197,7 +197,7 @@
                     Events      = @{}
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                         @{  ControlType = 'DataGridView'
-                            Name             = 'DataGridView_label'
+                            Name             = 'DataGridView_ADAccounts'
                             Dock             = 'Fill'
                             ReadOnly         = $True
                             CellBorderStyle  = 'SingleHorizontal'
@@ -334,12 +334,21 @@
                             Events      = @{
                                 SelectedIndexChanged = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'SelectedIndexChanged'
+                                    Invoke-EventTracer $Tabs.SelectedTab.Name $EventName
                                     switch ($this.SelectedTab.Name) {
                                         'Servers' {
+                                            $Global:mantis.SelectedDomain.Servers.Get()
                                         }
                                         'DFS' {
+                                            [PSCustomObject]@{
+                                                Name =  $mantis.SelectedDomain.DFS.Root
+                                                Handler = $mantis.SelectedDomain.DFS.Root
+                                                ToolTipText = $mantis.SelectedDomain.DFS.Root
+                                            } | Update-TreeView -treeNode $Global:ControlHandler['TreeDFS'] -expand -Clear -Depth 1
+                                            $mantis.SelectedDomain.DFS.Get() | Update-MantisDFS
                                         }
                                         'Groups' {
+                                            $Global:mantis.SelectedDomain.Groups.Get()
                                         }
                                         default {}
                                     }
@@ -353,7 +362,7 @@
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                         @{  ControlType = 'ListView'
-                                            Name             = 'ListView_label'
+                                            Name             = 'ListServers'
                                             Dock             = 'Fill'
                                             # Activation       = 'OneClick'
                                             FullRowSelect    = $True
@@ -362,27 +371,6 @@
                                             ShowItemToolTips = $True
                                             View             = 'Details'
                                             Events      = @{
-                                                Enter    = @{ # Event
-                                                    Type = 'Thread'
-                                                    ScriptBlock = [Scriptblock]{
-                                                        param($ControlHandler, $ControllerName, $EventName)
-                                                        $Tabs = $ControlHandler['TabsRessources']
-                                                        $ListView = $($ControlHandler["$($Tabs.SelectedTab.Name)_LV"])
-                                                        if (!$listview.tag -or (get-date $listview.tag) -lt (get-date).AddMinutes(-1)) {
-                                                            $listview.tag = $(Get-Date)
-                                                            Invoke-EventTracer $Tabs.SelectedTab.Name $EventName
-                                                            $ListView.Items.Clear()
-                                                                    [PSCustomObject]@{
-                                                                        FirstColValue = (Get-Random 100)
-                                                                        NextValues = (Get-Random 'Value1', 'Value2', 'Value0','Value3'),(Get-Random 'Value1', 'Value2', 'Value0','Value3')
-                                                                        Group   = (Get-Random 'Grp1', 'Grp2', 'Grp0','')
-                                                                        Caption = 'Caption infos'
-                                                                        Status  = (Get-Random 'Warn', 'Info', 'Title','')
-                                                                        Shadow  = (Get-Random $true, $false) # gris clair
-                                                                    } | Update-ListView -listView $ListView
-                                                        }
-                                                    }
-                                                }
                                                 ColumnClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'ColumnClick'
                                                     Set-ListViewSorted  -listView $this -column $_.Column
@@ -397,18 +385,18 @@
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                                 @{
                                                     ControlType = 'ColumnHeader'
-                                                    Text        = 'Col1'
-                                                    Width        = 140
+                                                    Text        = 'DNSHostName'
+                                                    Width        = 160
                                                 },
                                                 @{
                                                     ControlType = 'ColumnHeader'
-                                                    Text        = 'Col2'
-                                                    Width        = 120
+                                                    Text        = 'IP'
+                                                    Width        = 100
                                                 }
                                                 @{
                                                     ControlType = 'ColumnHeader'
-                                                    Text        = 'Col3'
-                                                    Width        = 150
+                                                    Text        = 'OS'
+                                                    Width        = 240
                                                 }
                                             )
                                         }
@@ -421,7 +409,7 @@
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                         @{  ControlType = 'ListView'
-                                            Name             = 'ListView_label'
+                                            Name             = 'ListGroups'
                                             Dock             = 'Fill'
                                             # Activation       = 'OneClick'
                                             FullRowSelect    = $True
@@ -430,27 +418,6 @@
                                             ShowItemToolTips = $True
                                             View             = 'Details'
                                             Events      = @{
-                                                Enter    = @{ # Event
-                                                    Type = 'Thread'
-                                                    ScriptBlock = [Scriptblock]{
-                                                        param($ControlHandler, $ControllerName, $EventName)
-                                                        $Tabs = $ControlHandler['TabsRessources']
-                                                        $ListView = $($ControlHandler["$($Tabs.SelectedTab.Name)_LV"])
-                                                        if (!$listview.tag -or (get-date $listview.tag) -lt (get-date).AddMinutes(-1)) {
-                                                            $listview.tag = $(Get-Date)
-                                                            Invoke-EventTracer $Tabs.SelectedTab.Name $EventName
-                                                            $ListView.Items.Clear()
-                                                                    [PSCustomObject]@{
-                                                                        FirstColValue = (Get-Random 100)
-                                                                        NextValues = (Get-Random 'Value1', 'Value2', 'Value0','Value3'),(Get-Random 'Value1', 'Value2', 'Value0','Value3')
-                                                                        Group   = (Get-Random 'Grp1', 'Grp2', 'Grp0','')
-                                                                        Caption = 'Caption infos'
-                                                                        Status  = (Get-Random 'Warn', 'Info', 'Title','')
-                                                                        Shadow  = (Get-Random $true, $false) # gris clair
-                                                                    } | Update-ListView -listView $ListView
-                                                        }
-                                                    }
-                                                }
                                                 ColumnClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'ColumnClick'
                                                     Set-ListViewSorted  -listView $this -column $_.Column
@@ -465,7 +432,7 @@
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                                 @{
                                                     ControlType = 'ColumnHeader'
-                                                    Text        = 'Col1'
+                                                    Text        = 'Name'
                                                     Width        = 140
                                                 },
                                                 @{
@@ -489,12 +456,20 @@
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                         @{  ControlType = 'TreeView'
-                                            # Name        = 'TreeView'
+                                            Name        = 'TreeDFS'
                                             Dock        = 'Fill'
                                             ShowNodeToolTips = $true
                                             Events      = @{
                                                 BeforeExpand    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'BeforeExpand'
+                                                    Get-ChildItem $this.Tag | ForEach-Object {
+                                                        @{
+                                                            Name = $_.name
+                                                            Handler = $_.FullName
+                                                            ToolTipText = $_.FullName
+                                                            ForeColor = [System.Drawing.Color]::DarkBlue
+                                                        } | Update-TreeView -treeNode $this -Clear -Depth 1
+                                                    }
                                                 }
                                                 DoubleClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'DoubleClick'
@@ -525,6 +500,10 @@
                                 }
                                 DoubleClick    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'DoubleClick'
+                                }
+                                AfterSelect =[Scriptblock]{ # Event
+                                    Invoke-EventTracer $this 'AfterSelect'
+                                    $Global:mantis.Domain($this.SelectedNode.Text)
                                 }
                             }
                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
