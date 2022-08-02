@@ -38,8 +38,9 @@ class UsersCollector {
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){
-                $this.Job = $true
-                $this.Job = Start-ThreadJob -StreamingHost $Global:host `
+                # $this.Job = $true
+                #    -StreamingHost $Global:host `
+                $this.Job = Start-ThreadJob `
                     -Name "Mantis_Usr_$($this.Domain)" `
                     -InitializationScript {} `
                     -ScriptBlock {
@@ -73,8 +74,9 @@ class GroupsCollector {
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){
-                $this.Job = $true
-                $this.Job = Start-ThreadJob -StreamingHost $Global:host `
+                # $this.Job = $true
+                #    -StreamingHost $Global:host `
+                $this.Job = Start-ThreadJob `
                     -Name "Mantis_Grp_$($this.Domain)" `
                     -InitializationScript {} `
                     -ScriptBlock {
@@ -86,119 +88,6 @@ class GroupsCollector {
                             -Server $Domain
                     } -ArgumentList $this.Domain
             } else {
-                $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-                # Write-Host $this.Items -ForegroundColor DarkYellow
-            }
-        }
-        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
-        return $this.Items
-    }
-}
-class ServersCollector {
-    hidden $Domain = $null
-    hidden $Job = $null
-    $Items = $null
-    $Sessions
-
-    ServersCollector ($Domain){
-        $this.Domain = $Domain
-    }
-    ServersCollector (){
-        $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
-    }
-    [PSCustomObject[]] Get () {
-        if (!$this.Items) {
-            if(!$this.Job){ # on first call, just start thread
-                $this.Job = Start-ThreadJob -StreamingHost $Global:host `
-                    -Name "Mantis_Srv_$($this.Domain)" `
-                    -InitializationScript {} `
-                    -ScriptBlock {
-                        param($Domain)
-                        Write-LogStep 'Collector Get-ADComputer',$Domain -mode wait
-                        Get-ADComputer -Filter { OperatingSystem -Like '*Windows Server*'} -Properties OperatingSystem,whencreated -Server $Domain | ForEach-Object -Parallel {
-                            function Write-LogStep { }
-                            $DNSHostName = $_.DNSHostName
-                            $IP = $null
-                            try {
-                                $IP = [string][System.Net.Dns]::GetHostAddresses($DNSHostName).IPAddressToString -Split(' ') | Sort-Object -Unique
-                            } catch {
-                                Write-Error $_
-                                Write-Error "Impossible de determiner l'adresse IP de [$DNSHostName]"
-                                # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", "Impossible de determiner l'adresse IP de [$DNSHostName]" error
-                            }
-                            if ($IP -and (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server").Type -eq 'Container') {
-                                $ProductVersion = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\ProductVersion").value
-                                $fDenyTSConnections = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections").value
-                                $TSUserEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSUserEnabled").value
-                                $TSEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSEnabled").value
-                                # if ($TSEnabled) {
-                                    $MemberOfFarm = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryClusterName").value
-                                    $ServerBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryLocation").value
-                                # }
-                            }
-
-                            [PSCustomObject]@{
-                                Name = $_.DNSHostName
-                                DN = $_.DistinguishedName
-                                SID = $_.SID.value
-                                OperatingSystem = $_.OperatingSystem
-                                IP = $IP
-                                isDC = $($_.DistinguishedName -like '*,OU=Domain Controllers,DC=*')
-                                isBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\CentralPublishedResources\PublishedFarms\").Value
-                                RDS = [PSCustomObject]@{
-                                    ProductVersion = $ProductVersion
-                                    fDenyTSConnections = $fDenyTSConnections
-                                    TSEnabled = $TSEnabled
-                                    TSUserEnabled = $TSUserEnabled
-                                    MemberOfFarm = $MemberOfFarm
-                                    ServerBroker = $ServerBroker
-                                }
-                            }
-                        } -ThrottleLimit 12
-                    } `
-                    -ArgumentList $this.Domain
-            } else { # on se$true
-                 # on secand call, wait and read started thread
-                $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-            }
-        }
-        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
-        return $this.Items
-    }
-}
-class SessionsCollector {
-    hidden $Domain = $null
-    hidden $Computers = $null
-    hidden $Job = $null
-    $Items = $null
-
-    SessionsCollector ($Domain,$Computers){
-        $this.Domain = $Domain
-        $this.Computers = $Computers
-    }
-    SessionsCollector (){
-        $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
-    }
-    [void] SetTarget ($Targets) {
-        $This.Computers = $Targets
-    }
-    [PSCustomObject[]] Get () {
-        if (!$this.Items) {
-            if(!$this.Job){ # on first call, just start thread
-                $this.Job = $true
-                $this.Job = Start-ThreadJob -StreamingHost $Global:host `
-                    -Name "Mantis_Sessions_$($this.Domain)" `
-                    -InitializationScript {} `
-                    -ScriptBlock {
-                        param($Domain)
-                        Write-LogStep 'Collector Get-RDSession',$Domain -mode wait
-                        $This.Computers | ForEach-Object -Parallel {
-                            function Write-LogStep { }
-                            $_ | Get-RdSession | Convert-RdSession
-                        } -ThrottleLimit 12
-                    } `
-                    -ArgumentList $this.Domain
-            } else { # on secand call, wait and read started thread
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
@@ -231,7 +120,8 @@ class DFSCollector {
             }
             # if(!$this.Job){
             #     $this.Job = $true
-            $this.Job = Start-ThreadJob -StreamingHost $Global:host `
+            #    -StreamingHost $Global:host `
+            #     $this.Job = Start-ThreadJob `
             #         -Name "Mantis_DFS_$($this.Domain)" `
             #         -InitializationScript {} `
             #         -ScriptBlock {
@@ -247,13 +137,121 @@ class DFSCollector {
             #     Write-Host 'Wait !!!' -fore DarkYellow
             #     $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
             #     Write-Host 'Wait ok !' -fore DarkGreen
-
             # }
         }
         # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
         return $this.Items
     }
 }
+
+class ServersCollector {
+    hidden $Domain = $null
+    hidden $Job = $null
+    $Items = $null
+
+    ServersCollector ($Domain){
+        $this.Domain = $Domain
+    }
+    ServersCollector (){
+        $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
+    }
+    [PSCustomObject[]] Get () {
+        if (!$this.Items) {
+            if(!$this.Job){ # on first call, just start thread
+                $this.Job = Start-ThreadJob `
+                    -StreamingHost $Global:host `
+                    -Name "Mantis_Srv_$($this.Domain)" `
+                    -InitializationScript {} `
+                    -ScriptBlock {
+                        param($Domain)
+                        Write-LogStep 'Collector Get-ADComputer',$Domain -mode wait
+                        Get-ADComputer -Filter { operatingSystem -Like '*Windows Server*'} -Properties whencreated -Server $Domain | ForEach-Object -Parallel {
+                            function Write-LogStep { }
+                            $DNSHostName = $_.DNSHostName
+                            $IP = $null
+                            try {
+                                $IP = [string][System.Net.Dns]::GetHostAddresses($DNSHostName).IPAddressToString -Split(' ') | Sort-Object -Unique
+                            } catch {
+                                Write-Error $_
+                                Write-Error "Impossible de determiner l'adresse IP de [$DNSHostName]"
+                                # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", "Impossible de determiner l'adresse IP de [$DNSHostName]" error
+                            }
+                            if ($IP -and (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server").Type -eq 'Container' -and (Test-TcpPort $_.DNSHostName -Quick -ConfirmIfDown)) {
+                                $OperatingSystem = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProductName").value
+                                $CurrentBuild = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuild").value
+                                $ProductVersion = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\ProductVersion").value
+                                $fDenyTSConnections = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections").value
+                                $TSUserEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSUserEnabled").value
+                                $TSEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSEnabled").value
+                                # if ($TSEnabled) {
+                                    $MemberOfFarm = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryClusterName").value
+                                    $ServerBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryLocation").value
+                                # }
+                            }
+
+                            [PSCustomObject]@{
+                                Name = $_.DNSHostName
+                                DN = $_.DistinguishedName
+                                SID = $_.SID.value
+                                OperatingSystem = $(if($OperatingSystem){"$OperatingSystem [$CurrentBuild]"})
+                                InstallDate = $_.whencreated
+                                IP = $IP
+                                isDC = $($_.DistinguishedName -like '*,OU=Domain Controllers,DC=*')
+                                isBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\CentralPublishedResources\PublishedFarms\").Value
+                                RDS = [PSCustomObject]@{
+                                    ProductVersion = $ProductVersion
+                                    fDenyTSConnections = $fDenyTSConnections
+                                    TSEnabled = $TSEnabled
+                                    TSUserEnabled = $TSUserEnabled
+                                    MemberOfFarm = $MemberOfFarm
+                                    ServerBroker = $ServerBroker
+                                }
+                                Sessions = $null # $_.DNSHostName | Get-RdSession | Convert-RdSession
+                            }
+                        } -ThrottleLimit 12
+                    } `
+                    -ArgumentList $this.Domain
+            } else { # on se$true
+                # on next call, wait and read started thread
+                $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
+                $this.Job = $null
+                $this.GetRDSessions()
+            }
+        }
+        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
+        return $this.Items
+    }
+    [PSCustomObject[]] GetRDSessions () {
+        return $this.GetRDSessions($this.Items)
+    }
+    [PSCustomObject[]] GetRDSessions ($ComputerItems) {
+        if($ComputerItems){ # on first call, just start thread
+            if (!$this.Job) {
+                $this.Items | ForEach-Object {
+                    $_.Sessions = $null
+                }
+                $this.Job = Start-ThreadJob `
+                    -Name "Mantis_Sessions_$($this.Domain)" `
+                    -InitializationScript {Import-Module PSWrite,PSRdSessions -DisableNameChecking -SkipEditionCheck} `
+                    -ScriptBlock {
+                        param($Computers)
+                        $Computers | ForEach-Object -Parallel {
+                            $_.Sessions = $_.Name | Get-RdSession | Convert-RdSession
+                        } -ThrottleLimit 12 -TimeoutSeconds 20
+                    } -ArgumentList @(,$ComputerItems) `
+                    # -StreamingHost $Global:host
+            } else { # on se$true
+                # on next call, wait and wait and read started thread
+                $this.Job | Receive-Job -Wait -AutoRemoveJob
+                # $this.Job | Write-Object -PassThru
+                $this.Job = $null
+                return $this.Items.Sessions
+            }
+        }
+        return $null
+    }
+}
+
 
 class Mantis {
     $CurrentDomain = $null

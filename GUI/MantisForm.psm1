@@ -39,10 +39,10 @@ function Start-WatchTimer {
         $MainTimer.Interval = $Ticks
         $Global:SequenceStart = New-Sequence @(
                 {$Mantis.CurrentDomain.Servers.Get()},
-                {$Mantis.CurrentDomain.DFS.Get()},
-                {$Mantis.CurrentDomain.Sessions.Get()},
-                {$Mantis.CurrentDomain.Users.Get()},
-                {$Mantis.CurrentDomain.Groups.Get()}
+                # {$Mantis.CurrentDomain.DFS.Get()},
+                # {$Mantis.CurrentDomain.Users.Get()},
+                # {$Mantis.CurrentDomain.Groups.Get()}
+                {}
             )
     }
     process {
@@ -51,11 +51,14 @@ function Start-WatchTimer {
             if ($Threads) {
                 
                 foreach($thread in $Threads) {
-                    # Write-Host ' > > > ',$thread.id,$thread.Name,$thread.State -ForegroundColor red
                     try {
                         switch -Regex ($thread.Name) {
                             'Mantis_Srv_.+' {
                                 $Mantis.SelectedDomain.Servers.Get() | Update-MantisSrv
+                            }
+                            'Mantis_Sessions_.+' {
+                                Write-Host "Mantis.SelectedDomain.Servers.GetRDSessions()" -fore DarkMagenta
+                                $Mantis.SelectedDomain.Servers.GetRDSessions() | Update-MantisSessions
                             }
                             'Mantis_Usr_.+' {
                                 $Mantis.SelectedDomain.Users.Get() | Update-MantisUsr
@@ -63,11 +66,11 @@ function Start-WatchTimer {
                             'Mantis_Grp_.+' {
                                 $Mantis.SelectedDomain.Groups.Get() | Update-MantisGrp
                             }
-                            'Mantis_Sessions_.+' {
-                                $Mantis.SelectedDomain.Sessions.Get() | Update-MantisSessions
-                            }
                             'Mantis_DFS_.+' {
-                                $Mantis.SelectedDomain.DFS.Get() | Update-MantisDFS
+                                Write-Center 'DFS ici'
+                                $Mantis.SelectedDomain.DFS | Update-MantisDFS
+                                Write-Center 'DFS la'
+
                             }
                             default {}
                         }
@@ -86,7 +89,6 @@ function Start-WatchTimer {
         
     }
 }
-
 function Update-MantisSrv {
     [CmdletBinding()]
     param (
@@ -96,18 +98,23 @@ function Update-MantisSrv {
     begin {
         $Target.BeginUpdate()
         $Target.Items.Clear()
+        $Target.Groups.Clear()
     }
     process {
+        # $Target.Groups.AddRange(@($items.RDS.MemberOfFarm | ForEach-Object { $_ } | Sort-Object -Unique))
+        # $Target.Groups.Add('Domain Controler')
+        # $Target.Groups.Add('Brocker')
+        # $Target.Groups.Add('Other')
         $Items | ForEach-Object {
             [PSCustomObject]@{
                 FirstColValue = $_.Name
-                NextValues = @($_.IP,$_.OperatingSystem,$_.DN)
-                Group   = $null
-                Caption = $null
+                NextValues = @($_.IP,$_.OperatingSystem,$_.InstallDate,$_.RDS.ProductVersion,$_.DN)
+                Group   = $(if($_.RDS.MemberOfFarm) {$_.RDS.MemberOfFarm} elseif ($_.RDS.ServerBroker) {'Brocker'} elseif($_.isDC) {'Domain Controler'} else {'Other'})
+                Caption = $(if($_.RDS.ServerBroker){"Broker [$($_.RDS.ServerBroker)]"} else {''})
                 Status  = ''
                 Shadow  = (!$_.IP)
-            } | Update-ListView -listView $Target
-        }
+            }
+        } | Update-ListView -listView $Target
     }
     end {
         $Target.EndUpdate()
@@ -120,18 +127,18 @@ function Update-MantisUsr {
         $Target = $Global:ControlHandler['DataGridView_ADAccounts']
     )
     begin {
-        # $Target.BeginUpdate()
-        # $Target.Items.Clear()
+        $Target.SuspendLayout()
+        $Target.Rows.Clear()
+        $Target.Enabled = $false
     }
     process {
-        $Items | ForEach-Object {
-            [PSCustomObject]@{
-
-            }
+        foreach ($item in $Items) {
+            
         }
     }
     end {
-        # $Target.EndUpdate()
+        $Target.ResumeLayout()
+        $Target.Enabled = $true
     }
 }
 function Update-MantisGrp {
@@ -163,22 +170,40 @@ function Update-MantisGrp {
 function Update-MantisSessions {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items,
-        $Target = $Global:ControlHandler['']
+        [Parameter(ValueFromPipeline = $true)]$Items,
+        $Target = $Global:ControlHandler['DataGridView_Sessions']
     )
     begin {
-        $Target.BeginUpdate()
-        $Target.Items.Clear()
+        $Target.SuspendLayout()
+        $Target.Rows.Clear()
+        $Target.Enabled = $false
     }
     process {
-        $Items | ForEach-Object {
-            [PSCustomObject]@{
-
-            } | Update-ListView -listView $Target
+        foreach ($item in ($Items | ?{$_})) {
+            try {
+                $lastAdded = $Target.rows.Add(@("$($item.ComputerName)", "$($item.SessionID)", "$($item.State)", "$($item.Sid)", "$($item.NtAccountName)", "$($item.IPAddress)", "$($item.ClientName)", "$($item.Protocole)", "$($item.ClientBuildNumber)", "$($item.LoginTime)", "$($item.DisconnectTime)", "$($item.ConnectTime)", "$($item.Inactivite)", "$($item.Screen)", "$($item.Process)"))
+                $lastRow = $Target.rows[$lastAdded]
+                if ($item.State -like "HS") {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::White
+                    $lastRow.DefaultCellStyle.BackColor = [system.Drawing.Color]::DarkGray
+                } elseif ($item.State -like "Linux") {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::Purple
+                    $lastRow.DefaultCellStyle.BackColor = [system.Drawing.Color]::SandyBrown
+                } elseif ($item.State -Like "Active") {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DarkBlue
+                } elseif ($item.Protocole -eq 'Service' -or $item.State -eq 'Listening') {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DimGray
+                } else {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::CornflowerBlue
+                }
+            } catch {
+                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            }
         }
     }
     end {
-        $Target.EndUpdate()
+        $Target.ResumeLayout()
+        $Target.Enabled = $true
     }
 }
 function Update-MantisDFS {
@@ -190,6 +215,7 @@ function Update-MantisDFS {
     begin {
         $Target.Nodes.Clear()
         # $Target.BeginUpdate()
+
         [PSCustomObject]@{
             Name =  $Dfs.Root
             Handler = $Dfs.Root
@@ -213,15 +239,21 @@ function Update-MantisDFS {
                         ForeColor = [System.Drawing.Color]::DarkBlue
                     }
                 } | Update-TreeView -treeNode $Target.TopNode -Clear -ChildrenScriptBlock {
-                    param($item)
-                    $item.Handler | get-childitem -Directory -Force -ea 0 | ForEach-Object {
-                        @{
-                            Name = $_.Name
-                            Handler = $_.FullName
-                            ToolTipText = "$Prefix$($_.FullName)"
-                            ForeColor = [System.Drawing.Color]::DarkCyan
-                        }
+                    [PSCustomObject]@{
+                        Name = '-'
+                        Handler = '-'
+                        ToolTipText = 'Impossible de trouver une racine DFS'
+                        ForeColor =[system.Drawing.Color]::LightGray
                     }
+                    # param($item)
+                    # $item.Handler | get-childitem -Directory -Force -ea 0 | ForEach-Object {
+                    #     @{
+                    #         Name = $_.Name
+                    #         Handler = $_.FullName
+                    #         ToolTipText = "$Prefix$($_.FullName)"
+                    #         ForeColor = [System.Drawing.Color]::DarkCyan
+                    #     }
+                    # }
                 } # -Expand <!> declenche l'event d'expand
             }
         } catch {
@@ -231,5 +263,59 @@ function Update-MantisDFS {
     }
     end {
         $Target.EndUpdate()
+    }
+}
+
+function Convert-DGVRow {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Rows
+    )
+    begin {
+        
+    }
+    process {
+        foreach ($Row in $Rows) {
+            Write-Object $Row.cells
+            [pscustomobject][ordered]@{
+                ComputerName  = $($Row.cells[0].value)
+                SessionID     = $( try { [int]$Row.cells[1].value } catch { $null } )
+                State         = $($Row.cells[2].value)
+                Sid           = $(if ($Row.cells[3].value -like 'S-1-*') {$sid = $Row.cells[3].value} else {$sid = $null})
+                NtAccountName = $($Row.cells[4].value)
+                IPAddress     = $($Row.cells[5].value)
+                ClientName    = $($Row.cells[6].value)
+                Protocole     = $($Row.cells[7].value)
+                handler       = $(if ($handler) { $Row }else { $null }) # la ligne dans le DataGridView
+            }
+        }
+    }
+    end {
+        
+    }
+}
+function Start-ActionByRow {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Rows,
+        $ColumnClicked = $null
+    )
+    begin {
+        
+    }
+    process {
+        foreach ($Row in $Rows) {
+            Invoke-EventTracer 'Start-ActionByRow' $ColumnClicked
+            $row | Write-Object -PassThru
+            switch ($ColumnClicked) {
+                'ComputerName' {}
+                'UserAccount' {}
+                'IpAddress' {}
+                default {}
+            }
+        }
+    }
+    end {
+        
     }
 }

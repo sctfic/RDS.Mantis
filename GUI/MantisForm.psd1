@@ -32,10 +32,14 @@
             Invoke-MantisConstructor
         }
         KeyDown = [Scriptblock]{ # Event
-            Invoke-EventTracer $this 'KeyDown'
             if ($_.KeyCode -eq 'Escape') {
                 $this.Close()
+            } else {
+                $Global:KeyDown = $_
             }
+        }
+        KeyUp = [Scriptblock]{ # Event
+            $Global:KeyDown = $null
         }
         Closing = [Scriptblock]{ # Event
             Invoke-EventTracer $this 'Closing'
@@ -51,7 +55,7 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'SelectedIndexChanged'
-                    $Global:ControlHandler['PanelLeft'].Width = 160
+                    $Global:ControlHandler['PanelLeft'].Width = 200
                     $Global:ControlHandler['PanelRight'].Width = 100
                     $Global:ControlHandler['Logs'].Height = 58
                 }
@@ -74,7 +78,7 @@
                     Events      = @{}
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                         @{  ControlType = 'DataGridView'
-                            Name             = 'DataGridView_label'
+                            Name             = 'DataGridView_Sessions'
                             Dock             = 'Fill'
                             ReadOnly         = $True
                             CellBorderStyle  = 'SingleHorizontal'
@@ -94,6 +98,7 @@
                                 }
                                 DoubleClick    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'DoubleClick'
+                                    $this.SelectedRows | Convert-DGVRow | Start-ActionByRow -ColumnClicked $this.CurrentCell.OwningColumn.HeaderText
                                 }
                             }
                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -184,7 +189,7 @@
                                 @{
                                     ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'Process'
-                                    Width = 230
+                                    Width = 0
                                 }
                             )
                         }
@@ -317,7 +322,7 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
-                    $Global:ControlHandler['PanelLeft'].Width = 320
+                    $Global:ControlHandler['PanelLeft'].Width = 640
                     $Global:ControlHandler['PanelRight'].Width = 100
                     $Global:ControlHandler['Logs'].Height = 58
                 }
@@ -372,11 +377,22 @@
                                                     Invoke-EventTracer $this 'ColumnClick'
                                                     Set-ListViewSorted  -listView $this -column $_.Column
                                                 }
-                                                Click    = [Scriptblock]{ # Event
-                                                    Invoke-EventTracer $this 'Click' # left and right but not on empty area
-                                                }
                                                 DoubleClick    = [Scriptblock]{ # Event
-                                                    Invoke-EventTracer $this 'DoubleClick'
+                                                    Invoke-EventTracer $this 'DoubleClick' # left and right but not on empty area
+
+                                                }
+                                                ItemSelectionChanged = [Scriptblock]{ # Event
+                                                    if (!$Global:KeyDown.Control -and !$Global:KeyDown.Shift) {
+                                                        Invoke-EventTracer $this 'ItemSelectionChanged'
+                                                        $Global:KeyDown | Write-Object -PassThru
+                                                        $Selected = $this.SelectedItems | ForEach-Object {
+                                                            $_.SubItems[0].text
+                                                        }
+                                                        $Computers = $Global:mantis.SelectedDomain.Servers.items | Where-Object {
+                                                            $Selected -contains $_.Name
+                                                        }
+                                                        $Global:mantis.SelectedDomain.Servers.GetRDSessions($Computers)
+                                                    }
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -388,12 +404,27 @@
                                                 @{
                                                     ControlType = 'ColumnHeader'
                                                     Text        = 'IP'
-                                                    Width        = 100
+                                                    Width        = 90
                                                 }
                                                 @{
                                                     ControlType = 'ColumnHeader'
                                                     Text        = 'OS'
                                                     Width        = 240
+                                                }
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'Install'
+                                                    Width        = 120
+                                                }
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'RDP Version'
+                                                    Width        = 40
+                                                }
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'DN'
+                                                    Width        = 0
                                                 }
                                             )
                                         }
@@ -465,44 +496,30 @@
                                                 AfterExpand    = [Scriptblock]{ # Event
                                                     $item = $_
                                                     Invoke-EventTracer $this "'BeforeExpand' $($item.Node.Text)"
-                                                    $item.fullPath | get-childitem -Directory -Force -ea 0 | ForEach-Object {
-                                                        @{
-                                                            Name = $_.Name
-                                                            Handler = $_.FullName
-                                                            ToolTipText = "$Prefix$($_.FullName)"
-                                                            ForeColor =[system.Drawing.Color]::DarkCyan
-                                                        }
-                                                    } | Update-TreeView -treeNode $item -Clear -ChildrenScriptBlock {
-                                                        @{
-                                                            Name = '.'
-                                                            Handler = '.'
-                                                            ForeColor =[system.Drawing.Color]::LightGray
+                                                    # $item.Node.FirstNode | Write-Object -PassThru
+                                                    if ($item.Node.FirstNode.Tag -eq '-') {
+                                                        $item.Node.fullPath | get-childitem -Directory -Force -ea 0 | ForEach-Object {
+                                                            [PSCustomObject]@{
+                                                                Name = $_.Name
+                                                                Handler = $_.FullName
+                                                                ToolTipText = "$Prefix$($_.FullName)"
+                                                                ForeColor =[system.Drawing.Color]::DarkCyan
+                                                            }
+                                                        } | Update-TreeView -treeNode $item.Node -Clear -ChildrenScriptBlock {
+                                                            [PSCustomObject]@{
+                                                                Name = '-'
+                                                                Handler = '-'
+                                                                ForeColor =[system.Drawing.Color]::LightGray
+                                                            }
                                                         }
                                                     }
-                                                    # $item.Node.Nodes | ForEach-Object {
-                                                    #     if ((Test-Path $_.FullPath) -and !$_.FirstNode) {
-                                                    #         $_.FullPath | get-childitem -Directory -Force -ea 0 | ForEach-Object {
-                                                    #             # $color = if ($_.IsInheritanceBlocked) {
-                                                    #             #     $Prefix = "Rupture d'heritage:`n"
-                                                    #             #     [system.Drawing.Color]::OrangeRed
-                                                    #             # } else {
-                                                    #             #     $Prefix = ''
-                                                    #             #    [system.Drawing.Color]::DarkBlue
-                                                    #             # }
-                                                    #             @{
-                                                    #                 Name = $_.Name
-                                                    #                 Handler = $_.FullName
-                                                    #                 ToolTipText = "$Prefix$($_.FullName)"
-                                                    #                 ForeColor =[system.Drawing.Color]::DarkCyan
-                                                    #             }
-                                                    #         } | Update-TreeView -treeNode $_
-                                                    #     }
-                                                    # }
                                                 }
                                                 DoubleClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'DoubleClick'
-                                                    # $this.SelectedNode | Write-Object -PassThru
-                                                    Start-Process $this.SelectedNode.fullPath
+                                                    $this | Write-Object -PassThru
+                                                    if ($this.SelectedNode.fullPath) {
+                                                        Start-Process $this.SelectedNode.fullPath -ea 0
+                                                    }
                                                     # $_.Cancel = $true
                                                 }
                                             }
@@ -556,7 +573,7 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
-                    $Global:ControlHandler['PanelLeft'].Width = 160
+                    $Global:ControlHandler['PanelLeft'].Width = 200
                     $Global:ControlHandler['PanelRight'].Width = 320
                     $Global:ControlHandler['Logs'].Height = 58
                 }
