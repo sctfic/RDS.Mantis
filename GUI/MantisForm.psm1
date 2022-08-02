@@ -37,12 +37,21 @@ function Start-WatchTimer {
     begin {
         $MainTimer = New-Object System.Windows.Forms.Timer
         $MainTimer.Interval = $Ticks
+        $Global:SequenceStart = New-Sequence @(
+                {$Mantis.CurrentDomain.Servers.Get()},
+                {$Mantis.CurrentDomain.DFS.Get()},
+                {$Mantis.CurrentDomain.Sessions.Get()},
+                {$Mantis.CurrentDomain.Users.Get()},
+                {$Mantis.CurrentDomain.Groups.Get()}
+            )
     }
     process {
         $MainTimer.add_Tick({ # on supprime les jobs terminé, toute les seconde
             $Threads = Get-Job | ?{$_.Name -like 'Mantis_*' -and $_.State -eq 'Completed'}
             if ($Threads) {
+                
                 foreach($thread in $Threads) {
+                    # Write-Host ' > > > ',$thread.id,$thread.Name,$thread.State -ForegroundColor red
                     try {
                         switch -Regex ($thread.Name) {
                             'Mantis_Srv_.+' {
@@ -54,8 +63,11 @@ function Start-WatchTimer {
                             'Mantis_Grp_.+' {
                                 $Mantis.SelectedDomain.Groups.Get() | Update-MantisGrp
                             }
-                            'Mantis_Session_.+' {
-                                $Mantis.SelectedDomain.Session.Get() | Update-MantisSessions
+                            'Mantis_Sessions_.+' {
+                                $Mantis.SelectedDomain.Sessions.Get() | Update-MantisSessions
+                            }
+                            'Mantis_DFS_.+' {
+                                $Mantis.SelectedDomain.DFS.Get() | Update-MantisDFS
                             }
                             default {}
                         }
@@ -63,6 +75,9 @@ function Start-WatchTimer {
                         Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
                     }
                 }
+            } elseif (!(Get-Job | Where-Object{$_.Name -like 'Mantis_*' -and $_.State -ne 'Completed'})) {
+                $next = $Global:SequenceStart.Next()
+                if ($Next) {Invoke-Command $next}
             }
         })
         $MainTimer.Start() | Out-Null
@@ -133,11 +148,11 @@ function Update-MantisGrp {
         $Items | ForEach-Object {
             [PSCustomObject]@{
                 FirstColValue = $_.Name
-                NextValues = @($_.Members.count, $_.DN)
-                Group   = $_.GroupCategory
+                NextValues = @($_.Members.count, $_.MemberOf, $_.DistinguishedName)
+                Group   = if($_.GroupCategory){$_.GroupCategory}else{'Distribution'}
                 Caption = $null
                 Status  = ''
-                Shadow  = $null
+                Shadow  = (!$_.Members.count)
             } | Update-ListView -listView $Target
         }
     }
@@ -169,36 +184,50 @@ function Update-MantisSessions {
 function Update-MantisDFS {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items = $mantis.SelectedDomain.DFS,
+        $Dfs = $mantis.SelectedDomain.DFS,
         $Target = $Global:ControlHandler['TreeDFS']
     )
     begin {
-        $Target.BeginUpdate()
-        $Target.Items.Clear()
+        $Target.Nodes.Clear()
+        # $Target.BeginUpdate()
+        [PSCustomObject]@{
+            Name =  $Dfs.Root
+            Handler = $Dfs.Root
+            ToolTipText = $Dfs.Root
+        } | Update-TreeView -treeNode $Target -Expand -Depth 1 -ChildrenScriptBlock {[PSCustomObject]@{
+            Name =  'Empty (No DFS Found!)'
+            Handler = ''
+            ToolTipText = 'Impossible de trouver une racine DFS'
+            ForeColor = [System.Drawing.Color]::Gray
+        }}
     }
     process {
-
-
-        $Items.Get() | ForEach-Object {
-            [PSCustomObject]@{
-                Name =  $_.Name
-                Handler = $_.Path
-                ToolTipText = $_.Path
-                ForeColor = [System.Drawing.Color]::DarkBlue
+        try {
+            $DFSNodes = $Dfs.Get() | Where-Object { $_.Name }
+            if ($DFSNodes) {
+                $DFSNodes | ForEach-Object {
+                    [PSCustomObject]@{
+                        Name =  $_.Name
+                        Handler = $_.Path
+                        ToolTipText = $_.Path
+                        ForeColor = [System.Drawing.Color]::DarkBlue
+                    }
+                } | Update-TreeView -treeNode $Target.TopNode -Clear -ChildrenScriptBlock {
+                    param($item)
+                    $item.Handler | get-childitem -Directory -Force -ea 0 | ForEach-Object {
+                        @{
+                            Name = $_.Name
+                            Handler = $_.FullName
+                            ToolTipText = "$Prefix$($_.FullName)"
+                            ForeColor = [System.Drawing.Color]::DarkCyan
+                        }
+                    }
+                } # -Expand <!> declenche l'event d'expand
             }
-        } | Write-Object -PassThru -fore Yellow | Update-TreeView -treeNode $Target.TopNode 
-        # -expand -Depth 2 -ChildrenScriptBlock {
-        #     param($parent)
-        #     $parent | Write-Object -PassThru -fore DarkMagenta
-        #     $parent.Handler | Write-Object -PassThru -fore Cyan | Get-ChildItem | ForEach-Object {
-        #         [PSCustomObject]@{
-        #             Name =  $_.Name
-        #             Handler = $_.FullPath
-        #             ToolTipText = $_.FullPath
-        #             ForeColor = [System.Drawing.Color]::Blue
-        #         }
-        #     }
-        # }
+        } catch {
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+        }
+
     }
     end {
         $Target.EndUpdate()

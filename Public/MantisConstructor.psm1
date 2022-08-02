@@ -4,7 +4,7 @@ function Invoke-MantisConstructor {
     begin {
         try {
             $items = @()
-            $Global:mantis = Get-Mantis
+            $Global:mantis = New-Mantis
         } catch {
             Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
         }

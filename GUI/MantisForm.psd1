@@ -340,12 +340,9 @@
                                             $Global:mantis.SelectedDomain.Servers.Get()
                                         }
                                         'DFS' {
-                                            [PSCustomObject]@{
-                                                Name =  $mantis.SelectedDomain.DFS.Root
-                                                Handler = $mantis.SelectedDomain.DFS.Root
-                                                ToolTipText = $mantis.SelectedDomain.DFS.Root
-                                            } | Update-TreeView -treeNode $Global:ControlHandler['TreeDFS'] -expand -Clear -Depth 1
-                                            $mantis.SelectedDomain.DFS.Get() | Update-MantisDFS
+                                            if ($Mantis.SelectedDomain.DFS.Root -notlike $Global:ControlHandler['TreeDFS'].TopNode.FullPath) {
+                                                Update-MantisDFS
+                                            }
                                         }
                                         'Groups' {
                                             $Global:mantis.SelectedDomain.Groups.Get()
@@ -433,17 +430,22 @@
                                                 @{
                                                     ControlType = 'ColumnHeader'
                                                     Text        = 'Name'
-                                                    Width        = 140
+                                                    Width        = 160
                                                 },
                                                 @{
                                                     ControlType = 'ColumnHeader'
-                                                    Text        = 'Col2'
-                                                    Width        = 120
+                                                    Text        = '#'
+                                                    Width        = 50
                                                 }
                                                 @{
                                                     ControlType = 'ColumnHeader'
-                                                    Text        = 'Col3'
+                                                    Text        = 'Imbriqué'
                                                     Width        = 150
+                                                }
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'DN'
+                                                    Width        = 0
                                                 }
                                             )
                                         }
@@ -460,19 +462,48 @@
                                             Dock        = 'Fill'
                                             ShowNodeToolTips = $true
                                             Events      = @{
-                                                BeforeExpand    = [Scriptblock]{ # Event
-                                                    Invoke-EventTracer $this 'BeforeExpand'
-                                                    Get-ChildItem $this.Tag | ForEach-Object {
+                                                AfterExpand    = [Scriptblock]{ # Event
+                                                    $item = $_
+                                                    Invoke-EventTracer $this "'BeforeExpand' $($item.Node.Text)"
+                                                    $item.fullPath | get-childitem -Directory -Force -ea 0 | ForEach-Object {
                                                         @{
-                                                            Name = $_.name
+                                                            Name = $_.Name
                                                             Handler = $_.FullName
-                                                            ToolTipText = $_.FullName
-                                                            ForeColor = [System.Drawing.Color]::DarkBlue
-                                                        } | Update-TreeView -treeNode $this -Clear -Depth 1
+                                                            ToolTipText = "$Prefix$($_.FullName)"
+                                                            ForeColor =[system.Drawing.Color]::DarkCyan
+                                                        }
+                                                    } | Update-TreeView -treeNode $item -Clear -ChildrenScriptBlock {
+                                                        @{
+                                                            Name = '.'
+                                                            Handler = '.'
+                                                            ForeColor =[system.Drawing.Color]::LightGray
+                                                        }
                                                     }
+                                                    # $item.Node.Nodes | ForEach-Object {
+                                                    #     if ((Test-Path $_.FullPath) -and !$_.FirstNode) {
+                                                    #         $_.FullPath | get-childitem -Directory -Force -ea 0 | ForEach-Object {
+                                                    #             # $color = if ($_.IsInheritanceBlocked) {
+                                                    #             #     $Prefix = "Rupture d'heritage:`n"
+                                                    #             #     [system.Drawing.Color]::OrangeRed
+                                                    #             # } else {
+                                                    #             #     $Prefix = ''
+                                                    #             #    [system.Drawing.Color]::DarkBlue
+                                                    #             # }
+                                                    #             @{
+                                                    #                 Name = $_.Name
+                                                    #                 Handler = $_.FullName
+                                                    #                 ToolTipText = "$Prefix$($_.FullName)"
+                                                    #                 ForeColor =[system.Drawing.Color]::DarkCyan
+                                                    #             }
+                                                    #         } | Update-TreeView -treeNode $_
+                                                    #     }
+                                                    # }
                                                 }
                                                 DoubleClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'DoubleClick'
+                                                    # $this.SelectedNode | Write-Object -PassThru
+                                                    Start-Process $this.SelectedNode.fullPath
+                                                    # $_.Cancel = $true
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -503,6 +534,9 @@
                                 }
                                 AfterSelect =[Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'AfterSelect'
+                                    Get-Job | Where-Object {
+                                        $_.Name -match"^Mantis_(\w|-)+_$($Global:mantis.SelectedDomain.Name)"
+                                    } | Remove-Job -Force
                                     $Global:mantis.Domain($this.SelectedNode.Text)
                                 }
                             }

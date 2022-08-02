@@ -1,6 +1,29 @@
 
 # $srv = [ServersCollector]::new()
 # $Srv.Get()
+class Sequence {
+    hidden $Cursor = 0
+    hidden $ListScriptBlock = $null
+    Sequence ($ListScriptBlock) {
+        $this.ListScriptBlock = $ListScriptBlock
+    }
+    [void]Append ($ScriptBlock){
+        $this.ListScriptBlock += $ScriptBlock
+    }
+    [scriptblock]Next(){
+        $Next = $Null
+        if ($this.Cursor -lt $this.ListScriptBlock.count){
+            Write-logstep "Sequence [$($this.Cursor)]",$this.ListScriptBlock[$this.Cursor] OK
+            $this.Cursor++
+            $Next = $this.ListScriptBlock[$this.Cursor-1]
+        }
+        return $Next
+    }
+    [void]End(){
+        $this.Cursor = 0
+        $this.ListScriptBlock = $null
+    }
+}
 class UsersCollector {
     hidden $Domain = $null
     hidden $Job = $null
@@ -15,12 +38,13 @@ class UsersCollector {
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){
+                $this.Job = $true
                 $this.Job = Start-ThreadJob -StreamingHost $Global:host `
                     -Name "Mantis_Usr_$($this.Domain)" `
                     -InitializationScript {} `
                     -ScriptBlock {
                         param($Domain)
-                        Write-LogStep 'Collector                         Get-ADUser',$Domain -mode wait
+                        Write-LogStep 'Collector Get-ADUser',$Domain -mode wait
                         Get-ADUser `
                             -Properties proxyaddresses,msexchhomeservername,msexchhomeservername,homemdb,msexchdumpsterquota,msexchdelegatelistbl,msexcharchivename,msexcharchivedatabaselink,msexchmailboxtemplatelink,msexcharchivequota `
                             -Filter {enabled -eq $true} `
@@ -31,6 +55,7 @@ class UsersCollector {
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
+        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
         return $this.Items
     }
 }
@@ -48,12 +73,13 @@ class GroupsCollector {
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){
+                $this.Job = $true
                 $this.Job = Start-ThreadJob -StreamingHost $Global:host `
                     -Name "Mantis_Grp_$($this.Domain)" `
                     -InitializationScript {} `
                     -ScriptBlock {
                         param($Domain)
-                        Write-LogStep 'Collector                         Get-ADGroup',$Domain -mode wait
+                        Write-LogStep 'Collector Get-ADGroup',$Domain -mode wait
                         Get-ADGroup `
                             -Properties Description,member,MemberOf,Members `
                             -Filter '*' `
@@ -64,6 +90,7 @@ class GroupsCollector {
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
+        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
         return $this.Items
     }
 }
@@ -71,6 +98,7 @@ class ServersCollector {
     hidden $Domain = $null
     hidden $Job = $null
     $Items = $null
+    $Sessions
 
     ServersCollector ($Domain){
         $this.Domain = $Domain
@@ -129,17 +157,59 @@ class ServersCollector {
                         } -ThrottleLimit 12
                     } `
                     -ArgumentList $this.Domain
+            } else { # on se$true
+                 # on secand call, wait and read started thread
+                $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
+            }
+        }
+        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
+        return $this.Items
+    }
+}
+class SessionsCollector {
+    hidden $Domain = $null
+    hidden $Computers = $null
+    hidden $Job = $null
+    $Items = $null
+
+    SessionsCollector ($Domain,$Computers){
+        $this.Domain = $Domain
+        $this.Computers = $Computers
+    }
+    SessionsCollector (){
+        $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
+    }
+    [void] SetTarget ($Targets) {
+        $This.Computers = $Targets
+    }
+    [PSCustomObject[]] Get () {
+        if (!$this.Items) {
+            if(!$this.Job){ # on first call, just start thread
+                $this.Job = $true
+                $this.Job = Start-ThreadJob -StreamingHost $Global:host `
+                    -Name "Mantis_Sessions_$($this.Domain)" `
+                    -InitializationScript {} `
+                    -ScriptBlock {
+                        param($Domain)
+                        Write-LogStep 'Collector Get-RDSession',$Domain -mode wait
+                        $This.Computers | ForEach-Object -Parallel {
+                            function Write-LogStep { }
+                            $_ | Get-RdSession | Convert-RdSession
+                        } -ThrottleLimit 12
+                    } `
+                    -ArgumentList $this.Domain
             } else { # on secand call, wait and read started thread
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
+        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
         return $this.Items
     }
 }
 class DFSCollector {
     hidden $Domain = $null
-    # hidden $Job = $null
+    hidden $Job = $null
     $Root = $null
     $Items = $null
 
@@ -160,23 +230,27 @@ class DFSCollector {
                 }
             }
             # if(!$this.Job){
-            #     $this.Job = Start-ThreadJob -StreamingHost $Global:host `
+            #     $this.Job = $true
+            $this.Job = Start-ThreadJob -StreamingHost $Global:host `
             #         -Name "Mantis_DFS_$($this.Domain)" `
             #         -InitializationScript {} `
             #         -ScriptBlock {
             #             param($Domain,$Root)
-            #             Get-DfsnRoot $Domain # tres lent ! | ForEach-Object {
+            #             Get-DfsnRoot $Domain | ForEach-Object { # tres lent ! et semble avoir des PB en mode thread
             #                 [PSCustomObject]@{
-            #                     Name = Split-Path -Leaf $_
-            #                     Path = $_
+            #                     Name = Split-Path -Leaf $_.Path
+            #                     Path = $_.Path
             #                 }
             #             }
             #         } -ArgumentList $this.Domain,$this.Root
             # } else {
+            #     Write-Host 'Wait !!!' -fore DarkYellow
             #     $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-            #     # Write-Host $this.Items -ForegroundColor DarkYellow
+            #     Write-Host 'Wait ok !' -fore DarkGreen
+
             # }
         }
+        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
         return $this.Items
     }
 }
@@ -205,6 +279,7 @@ class Mantis {
                 ShortName = ($Current -split('\.'))[0]
                 Name = $Current
                 Servers = [ServersCollector]::new($Current)
+                # Sessions = [SessionsCollector]::new($Current, )
                 Groups = [GroupsCollector]::new($Current)
                 Users = [UsersCollector]::new($Current)
                 DFS = [DFSCollector]::new($Current)
@@ -217,6 +292,7 @@ class Mantis {
                     ShortName = ($_ -split('\.'))[0]
                     Name = $_
                     Servers = [ServersCollector]::new($_)
+                    # Sessions = [SessionsCollector]::new($_, )
                     Groups = [GroupsCollector]::new($_)
                     Users = [UsersCollector]::new($_)
                     DFS = [DFSCollector]::new($_)
@@ -238,10 +314,12 @@ class Mantis {
 }
 
 
-function Get-Mantis {
+function New-Mantis {
     [Mantis]::new()
 }
-
+function New-Sequence($s) {
+    [Sequence]::new($s)
+}
 
 if (Get-Module PsWrite) {
     # Export-ModuleMember -Function Convert-RdSession, Get-RdSession
