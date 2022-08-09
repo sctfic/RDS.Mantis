@@ -18,16 +18,6 @@ function Invoke-EventTracer {
     }
 }
 
-if (Get-Module PsWrite) {
-    # Export-ModuleMember -Function Convert-RdSession, Get-RdSession
-    Write-LogStep 'Chargement du module ', $PSCommandPath ok
-} else {
-    function Script:Write-logstep {
-        param ( [string[]]$messages, $mode, $MaxWidth, $EachLength, $prefixe, $logTrace )
-        Write-Verbose "$($messages -join(',')) [$mode]"
-        # Write-LogStep '',"" ok
-    }
-}
 function Start-WatchTimer {
     [CmdletBinding()]
     param (
@@ -38,11 +28,22 @@ function Start-WatchTimer {
         $MainTimer = New-Object System.Windows.Forms.Timer
         $MainTimer.Interval = $Ticks
         $Global:SequenceStart = New-Sequence @(
-                {$Mantis.CurrentDomain.Servers.Get()},
-                # {$Mantis.CurrentDomain.DFS.Get()},
-                # {$Mantis.CurrentDomain.Users.Get()},
-                # {$Mantis.CurrentDomain.Groups.Get()}
-                {}
+                {
+                    $Global:ControlHandler['ListServers'].Enabled = $false
+                    $Mantis.SelectedDomain.Servers.Get()
+                },
+                {
+                    $Global:ControlHandler['TreeDFS'].Enabled = $false
+                    $Mantis.SelectedDomain.DFS.Get()
+                },
+                {
+                    $Global:ControlHandler['DataGridView_ADAccounts'].Enabled = $false
+                    $Mantis.SelectedDomain.Users.Get()
+                },
+                {
+                    $Global:ControlHandler['ListGroups'].Enabled = $false
+                    $Mantis.SelectedDomain.Groups.Get()
+                }
             )
     }
     process {
@@ -57,7 +58,6 @@ function Start-WatchTimer {
                                 $Mantis.SelectedDomain.Servers.Get() | Update-MantisSrv
                             }
                             'Mantis_Sessions_.+' {
-                                Write-Host "Mantis.SelectedDomain.Servers.GetRDSessions()" -fore DarkMagenta
                                 $Mantis.SelectedDomain.Servers.GetRDSessions() | Update-MantisSessions
                             }
                             'Mantis_Usr_.+' {
@@ -70,9 +70,9 @@ function Start-WatchTimer {
                                 Write-Center 'DFS ici'
                                 $Mantis.SelectedDomain.DFS | Update-MantisDFS
                                 Write-Center 'DFS la'
-
                             }
-                            default {}
+                            default {
+                            }
                         }
                     } catch {
                         Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
@@ -118,26 +118,6 @@ function Update-MantisSrv {
     }
     end {
         $Target.EndUpdate()
-    }
-}
-function Update-MantisUsr {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items,
-        $Target = $Global:ControlHandler['DataGridView_ADAccounts']
-    )
-    begin {
-        $Target.SuspendLayout()
-        $Target.Rows.Clear()
-        $Target.Enabled = $false
-    }
-    process {
-        foreach ($item in $Items) {
-            
-        }
-    }
-    end {
-        $Target.ResumeLayout()
         $Target.Enabled = $true
     }
 }
@@ -165,6 +145,160 @@ function Update-MantisGrp {
     }
     end {
         $Target.EndUpdate()
+        $Target.Enabled = $true
+    }
+}
+function Convert-AdUser {
+    <#
+        .SYNOPSIS
+            Converti des object ADSI et PSCustomObject
+        .DESCRIPTION
+            recupere les info de principale
+        .PARAMETER Items
+            
+        .EXAMPLE
+            Convert-AdsiUsers
+        .NOTES
+            Alban LOPEZ 2019
+            alban.lopez@gmail.com
+            http://git/PowerTech/
+    #>
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline=$true)]$Items,
+        [switch]$full,
+        [switch]$DisplayPassword = $null
+    )
+    begin {
+    }
+    process {
+        foreach ($item in $items) {
+            try {
+                $AdsiItem = [adsi]$item.DistinguishedName
+                # write-host -ForegroundColor Green (Measure-Command {
+                    try {
+                        $rds = $AdsiItem.InvokeGet("AllowLogon")
+                    } catch {
+                        $rds = $null
+                    } # n'as jamais été défini pour ce User
+                    $TsAllowLogon = @()
+                    if($rds -eq $true) {
+                        $TsAllowLogon += 'TSE authorized!'
+                    } elseif ($null -eq $rds) {
+                        $TsAllowLogon += 'TSE not forbidden!'
+                    }
+                    if ($Item.mail -and $Item.msExchMailboxGuid) {
+                        $TsAllowLogon += 'MailBox'
+                    }
+                    if (!$TsAllowLogon) {
+                        $TsAllowLogon = 'Just Account!'
+                    }
+                    $TsAllowLogon =  $TsAllowLogon -join(' + ')
+
+                #     if($AdsiItem.extensionattribute14 -match '\d{18}@.+\\.+'){
+                #         ($lesspassTicks, $lesspassScope) = $AdsiItem.extensionattribute14 -split('@')
+                #         $LesspassDate = (get-date ([int64]$lesspassTicks)).ToUniversalTime()
+                #         if([Math]::Abs(($PwdLastSet - $LesspassDate).Totalseconds) -lt 120) {
+                #             $PassWordType = $lesspassScope
+                #         } else {
+                #             $PassWordType = $null
+                #         }
+                #     } else {
+                #         $PassWordType = $null
+                #     }
+                $Prop = [ordered]@{
+                    NtAccountName        = $($Item.userPrincipalName) -replace ('(.+)@(.+)\..+', '$2\$1')
+                    DisplayName          = "$($Item.DisplayName)"
+                    Sid                  = "$($item.SID)"
+                    Email                = "$($Item.mail)" # + $($AdsiItem.proxyAddresses)"
+                    Type                 = $TsAllowLogon
+                    Enabled                = "$($Item.Enabled)"
+                    Phone                = "$($Item.telephonenumber)"
+                    Prenom               = "$($Item.givenname)"
+                    Nom                  = "$($Item.sn)"
+                    Name                 = "$($Item.Name)"
+                    State                = "$($Item.State)"
+                    Tel_interne          = "$($Item.ipPhone)"
+                    Password             = $null
+                    Title                = "$($item.Title)"
+                    AddressBookMembers   = "$($item.showInAddressBook)"
+                    Description          = "$($Item.description)"
+                    # PasswordType         = $PassWordType
+                    PasswordDate         = $(try {$item.PasswordLastSet.ToString()} catch {''})
+                    Groupes              = $($Item.memberOf | ?{$_} | %{(($_ -split(','))[0] -split('='))[1]}) # -join ("`n") # | ForEach-Object {([adsi]"LDAP://$_").name}
+                    CodePostal           = "$($Item.postalcode)"
+                    Ville                = "$($Item.City)"
+                    SiteGeo              = "$($Item.State)"
+                    Service              = "$($Item.Department)"
+                    Bureau               = "$($Item.physicaldeliveryofficename)"
+                    # OU                   = "$($AdsiItem.parent)"
+                    Path                 = "$($Item.DistinguishedName)"
+                    CreateDate           = $(try {$item.whenCreated.ToString()} catch {''})
+                    Expire               = $(try {$item.AccountExpirationDate.ToString()} catch {''})
+                    LastLogon            = $(try {$item.LastLogon.ToString()} catch {''})
+                } | Write-Object -PassThru
+                
+                # write-verbose "lastlogontimestamp = [$($Item.Properties.lastlogontimestamp)]"
+                # if($full){
+                #     foreach($key in $item.Properties.GetEnumerator().name){
+                #         # Write-Host $key,'-',$Prop.$Key,'-',$($item.Properties.$key) -fore red
+                #         if(!$Prop.$Key -and $($item.Properties.$key)){
+                #             try {
+                #                 $Prop.$Key = $($item.Properties.$key)
+                #             } catch {
+                #                 Write-Error "[$key] Unreadabe !"
+                #             }
+                #         }
+                #     }
+                # }
+            # }).TotalSeconds
+                
+                $Prop
+            } catch {
+                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" '',$_ error
+            }
+        }
+    }
+    end {
+        Write-Host 'End!'
+    }
+}
+function Update-MantisUsr {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items,
+        $Target = $Global:ControlHandler['DataGridView_ADAccounts']
+    )
+    begin {
+        $Target.SuspendLayout()
+        $Target.Rows.Clear()
+        $Target.Enabled = $false
+        $Target.Visible = $true
+    }
+    process {
+        foreach ($item in $Items) {
+            $lastAdded = $Target.rows.Add(@($item.NtAccountName, $item.DisplayName, $item.Sid, $item.email, $item.Type, $item.State, $item.Phone, $item.Description, $item.Facturation, $item.PasswordType, $item.CreateDate, $item.LastLogonDate, $item.Expire.ToString(), ($item.Groupes -join (", "))))
+            $lastRow = $Target.rows[$lastAdded]
+
+            if ($item.State -eq 'Disabled') {
+                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DimGray # ColorComptesInActif
+            } elseif ($item.Type -match 'Session') {
+                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::MediumBlue # ColorComptesActif
+            } elseif ($item.Type -match 'Bal') {
+                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::SlateBlue # ColorBalOnly
+            } else {
+                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DarkViolet # ColorComptesSystem
+            }
+
+            if ($item.ExpireDate -and ($item.ExpireDate).AddDays(300) -gt (Get-Date)) {
+                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::White
+                $lastRow.DefaultCellStyle.BackColor = [system.Drawing.Color]::Tomato
+            }
+        }
+    }
+    end {
+        $Target.ResumeLayout()
+        $Target.Enabled = $true
     }
 }
 function Update-MantisSessions {
@@ -177,6 +311,7 @@ function Update-MantisSessions {
         $Target.SuspendLayout()
         $Target.Rows.Clear()
         $Target.Enabled = $false
+        $Target.Visible = $true
     }
     process {
         foreach ($item in ($Items | ?{$_})) {
@@ -263,20 +398,20 @@ function Update-MantisDFS {
     }
     end {
         $Target.EndUpdate()
+        $Target.Enabled = $true
     }
 }
-
-function Convert-DGVRow {
+function Convert-DGV_RDS_Row {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Rows
+        [Parameter(ValueFromPipeline = $true)]$Rows = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows 
     )
     begin {
         
     }
     process {
         foreach ($Row in $Rows) {
-            Write-Object $Row.cells
+            # Write-Object $Row.cells
             [pscustomobject][ordered]@{
                 ComputerName  = $($Row.cells[0].value)
                 SessionID     = $( try { [int]$Row.cells[1].value } catch { $null } )
@@ -319,3 +454,83 @@ function Start-ActionByRow {
         
     }
 }
+function Set-SelectedRDServers {
+    param($ListView = $Global:ControlHandler['ListServers'])
+    $Global:LVSrvChange = $False
+    $Selected = $ListView.SelectedItems.Text
+    $Computers = $Global:mantis.SelectedDomain.Servers.items | Where-Object {
+        $Selected -contains $_.Name
+    }
+    $Global:mantis.SelectedDomain.Servers.GetRDSessions($Computers)
+}
+function Stop-DGV_RDSSessions {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $ComputerName = $null,
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $SessionID = $null,
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $NtAccountName = $null
+    )
+    begin {
+        $Listing = @()
+        $CassiaSession = @()
+    }
+    process {
+        # $ComputerName, $SessionID, $NtAccountName | Write-Object
+        $CassiaSession += $ComputerName | Get-RdComputer | Get-RdSession -Identity $SessionID # | ?{$NtAccountName}
+    }
+    end {
+        $Listing = $CassiaSession | ForEach-Object {
+            "`t$($_.server.servername):$($_.SessionId) -> $($_.UserAccount)"
+        }
+        # Write-Object $CassiaSession -foreGroundColor DarkBlue
+        if ([System.Windows.Forms.MessageBox]::Show(
+                "Fermeture de $($CassiaSession.Count) session(s) :`n`n$($Listing -join("`n"))",
+                "Question", [System.Windows.Forms.MessageBoxButtons]::YesNo) -eq 'Yes'
+        ) {
+            foreach ($Target in $CassiaSession) {
+                try {
+                    $Target.Logoff($false)
+                    Write-LogStep "Fermeture de session [$($Target.Server.ServerName):$($Target.SessionId)]", "$([string]$Target.UserAccount)" OK
+                }
+                catch {
+                    Write-LogStep "Fermeture de session [$($Target.Server.ServerName):$($Target.SessionId)]", $_ Error
+                }
+            }
+            $true
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+if (!(Get-Module PsWrite)) {
+    function Script:Write-logstep {
+        param ( [string[]]$messages, $mode, $MaxWidth, $EachLength, $prefixe, $logTrace )
+        Write-Verbose "$($messages -join(',')) [$mode]"
+    }
+}
+Write-LogStep 'Chargement du module ', $PSCommandPath warn

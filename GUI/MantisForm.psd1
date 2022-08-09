@@ -98,96 +98,167 @@
                                 }
                                 DoubleClick    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'DoubleClick'
-                                    $this.SelectedRows | Convert-DGVRow | Start-ActionByRow -ColumnClicked $this.CurrentCell.OwningColumn.HeaderText
+                                    $this.SelectedRows | Convert-DGV_RDS_Row | Start-ActionByRow -ColumnClicked $this.CurrentCell.OwningColumn.HeaderText
                                 }
                             }
-                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                            Childrens   = @(
+                                @{  ControlType = 'ContextMenuStrip'
+                                        Dock        = 'Fill'
+                                        Events      = @{
+                                            Opening    = [Scriptblock]{ # Event
+                                                Invoke-EventTracer $this 'MenuEnter'
+                                                $Sessions = $Srv = 0
+                                                $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
+                                                $Srv = ($global:RDS_Selected.ComputerName | Where-Object {
+                                                    $_
+                                                } | Sort-Object -Unique).count
+                                                $Sessions = ($global:RDS_Selected.NtAccountName | Where-Object {
+                                                    $_
+                                                }).count
+                                                $Global:ControlHandler['ContextMenuStrip_RDSessions_Title'].text = "$Sessions Users sur $Srv Serveurs"
+                                            }
+                                        }
+                                        Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                        @{
+                                            ControlType = 'ToolStripLabel'
+                                            Name        = 'ContextMenuStrip_RDSessions_Title'
+                                            Text        = 'X Users sur Y Serveurs'
+                                        },
+                                        @{ ControlType = 'ToolStripSeparator'
+                                        },
+                                        @{
+                                            ControlType = 'ToolStripMenuItem'
+                                            ShortcutKeys = 'Delete'
+                                            ShortcutKeyDisplayString = 'Supp.'
+                                            Text        = 'Fermer la session'
+                                            Events      = @{
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this.Text 'Click'
+                                                    if ($global:RDS_Selected | Stop-DGV_RDSSessions) {
+                                                        Set-SelectedRDServers
+                                                    }
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                            )
+                                        },
+                                        @{ ControlType = 'ToolStripSeparator'
+                                        },
+                                        @{
+                                            ControlType = 'ToolStripMenuItem'
+                                            ShortcutKeys = 'Ctrl+M'
+                                            ShortcutKeyDisplayString = 'Ctrl+M'
+                                            Text        = "Envoyer un Message a l'ecran"
+                                            Events      = @{
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this.Text 'Click'
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                            )
+                                        },
+                                        @{
+                                            ControlType = 'ToolStripMenuItem'
+                                            ShortcutKeys = 'Ctrl+Q'
+                                            ShortcutKeyDisplayString = 'Ctrl+Q'
+                                            Text        = "Envoyer une Question Y/N a l'ecran"
+                                            Events      = @{
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this.Text 'Click'
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                            )
+                                        },
+                                        @{
+                                            ControlType = 'ToolStripMenuItem'
+                                            ShortcutKeys = 'F5'
+                                            ShortcutKeyDisplayString = 'F5'
+                                            Text        = "Actualiser"
+                                            Events      = @{
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this.Text 'Click'
+                                                    $Srv = ($Global:ControlHandler['DataGridView_Sessions'].Columns['ComputerName'].Value | Write-Object -PassThru -foreGroundColor Magenta | Where-Object {
+                                                        $_
+                                                    } | Sort-Object -Unique)
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                            )
+                                        }
+                                    )
+                                }
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'ComputerName'
                                     Width = 140
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'SessionID'
                                     Width = 35
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'State'
                                     Width = 80
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'Sid'
                                     Width = 45
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'UserAccount'
                                     Width = 150
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'IPAddress'
                                     Width = 125
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'ClientName'
                                     Width = 130
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'Protocole'
                                     Width = 75
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'ClientBuildNumber'
                                     Width = 60
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'LoginTime'
                                     Width = 115
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'ConnectTime'
                                     Width = 115
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'DisconnectTime'
                                     Width = 115
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'Inactivite'
-                                    Width = 70
+                                    Width = 100
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'Screen'
                                     Width = 100
                                     
                                 },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
+                                @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'Process'
                                     Width = 0
                                 }
@@ -330,11 +401,12 @@
             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                 @{  ControlType = 'GroupBox'
                     Name        = 'Target'
-                    Text        = 'Forest'
+                    Text        = 'Selected Forest'
                     Dock        = 'Fill'
                     Events      = @{}
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                         @{  ControlType = 'TabControl'
+                            Name        = 'TabsSelectedForest'
                             Dock        = 'Fill'
                             Events      = @{
                                 SelectedIndexChanged = [Scriptblock]{ # Event
@@ -343,14 +415,17 @@
                                     switch ($this.SelectedTab.Name) {
                                         'Servers' {
                                             $Global:mantis.SelectedDomain.Servers.Get()
-                                        }
-                                        'DFS' {
-                                            if ($Mantis.SelectedDomain.DFS.Root -notlike $Global:ControlHandler['TreeDFS'].TopNode.FullPath) {
-                                                Update-MantisDFS
-                                            }
+                                            # $Global:ControlHandler['ListServers'].Enabled = $false
                                         }
                                         'Groups' {
                                             $Global:mantis.SelectedDomain.Groups.Get()
+                                            # $Global:ControlHandler['ListGroups'].Enabled = $false
+                                        }
+                                        'DFS' {
+                                            if ($Mantis.SelectedDomain.DFS.Root -notlike $Global:ControlHandler['TreeDFS'].TopNode.FullPath) {
+                                                # $Global:ControlHandler['TreeDFS'].Enabled = $false
+                                                Update-MantisDFS
+                                            }
                                         }
                                         default {}
                                     }
@@ -363,7 +438,7 @@
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
-                                        @{  ControlType = 'ListView'
+                                        @{  ControlType      = 'ListView'
                                             Name             = 'ListServers'
                                             Dock             = 'Fill'
                                             # Activation       = 'OneClick'
@@ -379,19 +454,36 @@
                                                 }
                                                 DoubleClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'DoubleClick' # left and right but not on empty area
-
+                                                    try {
+                                                        $cred = (get-CredentialByRegistry -ntAccountName (whoami.exe))
+                                                        Open-RdSession -ComputerName $this.SelectedItems.text -Credential $cred| Out-Null
+                                                    } catch {
+                                                        Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                                    }
                                                 }
-                                                ItemSelectionChanged = [Scriptblock]{ # Event
-                                                    if (!$Global:KeyDown.Control -and !$Global:KeyDown.Shift) {
-                                                        Invoke-EventTracer $this 'ItemSelectionChanged'
-                                                        $Global:KeyDown | Write-Object -PassThru
-                                                        $Selected = $this.SelectedItems | ForEach-Object {
-                                                            $_.SubItems[0].text
-                                                        }
-                                                        $Computers = $Global:mantis.SelectedDomain.Servers.items | Where-Object {
-                                                            $Selected -contains $_.Name
-                                                        }
-                                                        $Global:mantis.SelectedDomain.Servers.GetRDSessions($Computers)
+                                                ItemSelectionChanged  = [Scriptblock]{ # Event
+                                                    if($_.IsSelected){
+                                                        $Global:LVSrvChange = $_.item.Text #| Write-Object -PassThru -fore Green
+                                                    } else { 
+                                                        $Global:LVSrvChange = $_.item.Text #| Write-Object -PassThru -fore red
+                                                    } 
+                                                    $Global:ControlHandler['DataGridView_Sessions'].Visible = $False
+                                                }
+                                                KeyDown = [Scriptblock]{ # Event
+                                                    $Global:LVSrvKeyDown = $_
+                                                }
+                                                KeyUp = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'KeyUp'
+                                                    $Global:LVSrvKeyDown = $null
+                                                    if ($Global:LVSrvChange){
+                                                        Set-SelectedRDServers
+                                                    }
+                                                }
+                                                MouseUp = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'MouseUp'
+                                                    # $this.SelectedItems.Text | Write-Object -PassThru
+                                                    if ($Global:LVSrvChange -and !($Global:LVSrvKeyDown.Control -or $Global:LVSrvKeyDown.Shift)){
+                                                        Set-SelectedRDServers
                                                     }
                                                 }
                                             }
@@ -436,7 +528,7 @@
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
-                                        @{  ControlType = 'ListView'
+                                        @{  ControlType      = 'ListView'
                                             Name             = 'ListGroups'
                                             Dock             = 'Fill'
                                             # Activation       = 'OneClick'
@@ -555,6 +647,10 @@
                                         $_.Name -match"^Mantis_(\w|-)+_$($Global:mantis.SelectedDomain.Name)"
                                     } | Remove-Job -Force
                                     $Global:mantis.Domain($this.SelectedNode.Text)
+                                    $Global:SequenceStart.Restart()
+                                    # $tab = $($Global:ControlHandler['TabsSelectedForest'].SelectedTab.Name)
+                                    # $Global:ControlHandler['TabsSelectedForest'].DeselectTab($tab)
+                                    # $Global:ControlHandler['TabsSelectedForest'].SelectTab($tab)
                                 }
                             }
                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]

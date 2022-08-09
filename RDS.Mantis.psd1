@@ -12,7 +12,7 @@
 RootModule = 'RDS.Mantis.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.0.0.16'
+ModuleVersion = '0.0.1.32'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -51,7 +51,7 @@ Description = 'Fast and Panoramic tools for RDS farm management'
 # ProcessorArchitecture = ''
 
 # Modules that must be imported into the global environment prior to importing this module
-RequiredModules = @('PSWrite','PsWinForm-Builder')
+RequiredModules = @('Microsoft.PowerShell.Utility', 'PSWrite', 'PsWinForm-Builder')
 
 # Assemblies that must be loaded prior to importing this module
 # RequiredAssemblies = @()

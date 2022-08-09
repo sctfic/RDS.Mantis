@@ -19,9 +19,9 @@ class Sequence {
         }
         return $Next
     }
-    [void]End(){
+    [void]Restart(){
         $this.Cursor = 0
-        $this.ListScriptBlock = $null
+        # $this.ListScriptBlock = $null
     }
 }
 class UsersCollector {
@@ -47,9 +47,9 @@ class UsersCollector {
                         param($Domain)
                         Write-LogStep 'Collector Get-ADUser',$Domain -mode wait
                         Get-ADUser `
-                            -Properties proxyaddresses,msexchhomeservername,msexchhomeservername,homemdb,msexchdumpsterquota,msexchdelegatelistbl,msexcharchivename,msexcharchivedatabaselink,msexchmailboxtemplatelink,msexcharchivequota `
+                            -Properties * `
                             -Filter {enabled -eq $true} `
-                            -Server $Domain
+                            -Server $Domain | Convert-AdUser
                     } -ArgumentList $this.Domain
             } else {
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
@@ -277,7 +277,6 @@ class Mantis {
                 ShortName = ($Current -split('\.'))[0]
                 Name = $Current
                 Servers = [ServersCollector]::new($Current)
-                # Sessions = [SessionsCollector]::new($Current, )
                 Groups = [GroupsCollector]::new($Current)
                 Users = [UsersCollector]::new($Current)
                 DFS = [DFSCollector]::new($Current)
@@ -290,7 +289,6 @@ class Mantis {
                     ShortName = ($_ -split('\.'))[0]
                     Name = $_
                     Servers = [ServersCollector]::new($_)
-                    # Sessions = [SessionsCollector]::new($_, )
                     Groups = [GroupsCollector]::new($_)
                     Users = [UsersCollector]::new($_)
                     DFS = [DFSCollector]::new($_)
