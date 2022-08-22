@@ -10,7 +10,7 @@ function Invoke-MantisConstructor {
         }
         $ChildrenScriptBlock = {
             param($parent)
-            Get-ADOrganizationalUnit -Server $parent.Server -SearchBase $parent.Handler -Filter * -SearchScope OneLevel -ea SilentlyContinue | %{
+            ActiveDirectory\Get-ADOrganizationalUnit -Server $parent.Server -SearchBase $parent.Handler -Filter * -SearchScope OneLevel -ea SilentlyContinue | %{
                 @{
                     Name = $_.Name
                     Server = $parent.Server

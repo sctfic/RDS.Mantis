@@ -20,13 +20,16 @@ class Sequence {
         return $Next
     }
     [void]Restart(){
+        
         $this.Cursor = 0
+        Write-logstep "Sequence [Restart]",$this.ListScriptBlock[$this.Cursor] Warn
         # $this.ListScriptBlock = $null
     }
 }
 class UsersCollector {
     hidden $Domain = $null
     hidden $Job = $null
+    hidden $LastResultDateTime = $null
     $Items = $null
 
     UsersCollector ($Domain){
@@ -35,6 +38,12 @@ class UsersCollector {
     UsersCollector (){
         $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
     }
+    [void]Reset () {
+        $this.Items = $null
+        $this.Job | Remove-Job -Force -ea SilentlyContinue
+        $this.Job = $null
+        $this.LastResultDateTime = $null
+    }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){
@@ -42,17 +51,19 @@ class UsersCollector {
                 #    -StreamingHost $Global:host `
                 $this.Job = Start-ThreadJob `
                     -Name "Mantis_Usr_$($this.Domain)" `
-                    -InitializationScript {} `
+                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite;Import-Module RDS.Mantis -Function Convert-AdUsers} `
                     -ScriptBlock {
                         param($Domain)
+                        
                         Write-LogStep 'Collector Get-ADUser',$Domain -mode wait
                         Get-ADUser `
                             -Properties * `
-                            -Filter {enabled -eq $true} `
-                            -Server $Domain | Convert-AdUser
+                            -Filter * `
+                            -Server $Domain | Convert-AdUsers
                     } -ArgumentList $this.Domain
             } else {
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
+                $this.LastResultDateTime = Get-Date
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
@@ -63,6 +74,7 @@ class UsersCollector {
 class GroupsCollector {
     hidden $Domain = $null
     hidden $Job = $null
+    hidden $LastResultDateTime = $null
     $Items = $null
 
     GroupsCollector ($Domain){
@@ -71,6 +83,12 @@ class GroupsCollector {
     GroupsCollector (){
         $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
     }
+    [void]Reset () {
+        $this.Items = $null
+        $this.Job | Remove-Job -Force -ea SilentlyContinue
+        $this.Job = $null
+        $this.LastResultDateTime = $null
+    }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){
@@ -78,9 +96,10 @@ class GroupsCollector {
                 #    -StreamingHost $Global:host `
                 $this.Job = Start-ThreadJob `
                     -Name "Mantis_Grp_$($this.Domain)" `
-                    -InitializationScript {} `
+                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite} `
                     -ScriptBlock {
                         param($Domain)
+                        
                         Write-LogStep 'Collector Get-ADGroup',$Domain -mode wait
                         Get-ADGroup `
                             -Properties Description,member,MemberOf,Members `
@@ -89,6 +108,52 @@ class GroupsCollector {
                     } -ArgumentList $this.Domain
             } else {
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
+                $this.LastResultDateTime = Get-Date
+                # Write-Host $this.Items -ForegroundColor DarkYellow
+            }
+        }
+        # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
+        return $this.Items
+    }
+}
+class TrashCollector {
+    hidden $Domain = $null
+    hidden $Job = $null
+    hidden $LastResultDateTime = $null
+    $Items = $null
+
+    TrashCollector ($Domain){
+        $this.Domain = $Domain
+    }
+    TrashCollector (){
+        $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
+    }
+    [void]Reset () {
+        $this.Items = $null
+        $this.Job | Remove-Job -Force -ea SilentlyContinue
+        $this.Job = $null
+        $this.LastResultDateTime = $null
+    }
+    [PSCustomObject[]] Get () {
+        if (!$this.Items) {
+            if(!$this.Job){
+                # $this.Job = $true
+                #    -StreamingHost $Global:host `
+                $this.Job = Start-ThreadJob `
+                    -Name "Mantis_Trash_$($this.Domain)" `
+                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite} `
+                    -ScriptBlock {
+                        param($Domain)
+                        Write-LogStep 'Collector Get-ADObject Trash',$Domain -mode wait
+                        Get-ADObject -Filter 'isdeleted -eq $true' -IncludeDeletedObjects `
+                            -Properties 'msDS-LastKnownRDN',dNSHostName,Description,ObjectClass,sAMAccountName,objectSid,LastKnownParent,DistinguishedName,whenChanged `
+                            -Server $Domain | Where-Object {
+                                $_.LastKnownParent -and @('user','computer','group') -contains $_.ObjectClass
+                            }
+                    } -ArgumentList $this.Domain
+            } else {
+                $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
+                $this.LastResultDateTime = Get-Date
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
@@ -99,6 +164,7 @@ class GroupsCollector {
 class DFSCollector {
     hidden $Domain = $null
     hidden $Job = $null
+    hidden $LastResultDateTime = $null
     $Root = $null
     $Items = $null
 
@@ -110,9 +176,15 @@ class DFSCollector {
         $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
         $this.Root = "\\$($this.Domain)"
     }
+    [void]Reset () {
+        $this.Items = $null
+        $this.Job | Remove-Job -Force -ea SilentlyContinue
+        $this.Job = $null
+        $this.LastResultDateTime = $null
+    }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
-            $this.Items = (Get-ADObject -Server $this.Domain -SearchBase "CN=Dfs-Configuration,CN=System,DC=$($this.Domain -replace('\.',',DC='))" -Filter * -SearchScope OneLevel).Name | ForEach-Object {
+            $this.Items = (ActiveDirectory\Get-ADObject -Server $this.Domain -SearchBase "CN=Dfs-Configuration,CN=System,DC=$($this.Domain -replace('\.',',DC='))" -Filter * -SearchScope OneLevel).Name | ForEach-Object {
                 [PSCustomObject]@{
                     Name = $_
                     Path = "$($this.Root)\$_"
@@ -123,7 +195,7 @@ class DFSCollector {
             #    -StreamingHost $Global:host `
             #     $this.Job = Start-ThreadJob `
             #         -Name "Mantis_DFS_$($this.Domain)" `
-            #         -InitializationScript {} `
+            #         -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module DFSN,PsWrite} `
             #         -ScriptBlock {
             #             param($Domain,$Root)
             #             Get-DfsnRoot $Domain | ForEach-Object { # tres lent ! et semble avoir des PB en mode thread
@@ -136,6 +208,7 @@ class DFSCollector {
             # } else {
             #     Write-Host 'Wait !!!' -fore DarkYellow
             #     $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
+            $this.LastResultDateTime = Get-Date
             #     Write-Host 'Wait ok !' -fore DarkGreen
             # }
         }
@@ -143,10 +216,10 @@ class DFSCollector {
         return $this.Items
     }
 }
-
 class ServersCollector {
     hidden $Domain = $null
     hidden $Job = $null
+    hidden $LastResultDateTime = $null
     $Items = $null
 
     ServersCollector ($Domain){
@@ -155,18 +228,26 @@ class ServersCollector {
     ServersCollector (){
         $this.Domain = ([System.DirectoryServices.ActiveDirectory.Domain]::getCurrentDomain()).Forest.Name
     }
+    [void]Reset () {
+        $this.Items = $null
+        $this.Job | Remove-Job -Force -ea SilentlyContinue
+        $this.Job = $null
+        $this.LastResultDateTime = $null
+    }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){ # on first call, just start thread
+                Write-Host "Create Job","Mantis_Sessions_$($this.Domain)" -ForegroundColor DarkBlue
                 $this.Job = Start-ThreadJob `
                     -StreamingHost $Global:host `
                     -Name "Mantis_Srv_$($this.Domain)" `
-                    -InitializationScript {} `
+                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite} `
                     -ScriptBlock {
                         param($Domain)
+                        
                         Write-LogStep 'Collector Get-ADComputer',$Domain -mode wait
-                        Get-ADComputer -Filter { operatingSystem -Like '*Windows Server*'} -Properties whencreated -Server $Domain | ForEach-Object -Parallel {
-                            function Write-LogStep { }
+                        Get-ADComputer -Filter { operatingSystem -Like '*Windows Server*'} -Properties OperatingSystem,operatingSystem,WhenCreated,whenCreated -Server $Domain | ForEach-Object -Parallel {
+                            # function Write-LogStep { }
                             $DNSHostName = $_.DNSHostName
                             $IP = $null
                             try {
@@ -188,25 +269,28 @@ class ServersCollector {
                                     $ServerBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryLocation").value
                                 # }
                             }
-
-                            [PSCustomObject]@{
-                                Name = $_.DNSHostName
-                                DN = $_.DistinguishedName
-                                SID = $_.SID.value
-                                OperatingSystem = $(if($OperatingSystem){"$OperatingSystem [$CurrentBuild]"})
-                                InstallDate = $_.whencreated
-                                IP = $IP
-                                isDC = $($_.DistinguishedName -like '*,OU=Domain Controllers,DC=*')
-                                isBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\CentralPublishedResources\PublishedFarms\").Value
-                                RDS = [PSCustomObject]@{
-                                    ProductVersion = $ProductVersion
-                                    fDenyTSConnections = $fDenyTSConnections
-                                    TSEnabled = $TSEnabled
-                                    TSUserEnabled = $TSUserEnabled
-                                    MemberOfFarm = $MemberOfFarm
-                                    ServerBroker = $ServerBroker
+                            try {
+                                [PSCustomObject]@{
+                                    Name = $_.DNSHostName
+                                    DN = $_.DistinguishedName
+                                    SID = $_.SID.value
+                                    OperatingSystem =  $(if($OperatingSystem){"$OperatingSystem [$CurrentBuild]"}) # $(try{$_.operatingSystem}catch{Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error}) #
+                                    InstallDate = $(try{$_.whenCreated}catch{Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error})
+                                    IP = $IP
+                                    isDC = $($_.DistinguishedName -like '*,OU=Domain Controllers,DC=*')
+                                    isBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\CentralPublishedResources\PublishedFarms\").Value
+                                    RDS = [PSCustomObject]@{
+                                        ProductVersion = $ProductVersion
+                                        fDenyTSConnections = $fDenyTSConnections
+                                        TSEnabled = $TSEnabled
+                                        TSUserEnabled = $TSUserEnabled
+                                        MemberOfFarm = $MemberOfFarm
+                                        ServerBroker = $ServerBroker
+                                    }
+                                    Sessions = $null # $_.DNSHostName | Get-RdSession | Convert-RdSession
                                 }
-                                Sessions = $null # $_.DNSHostName | Get-RdSession | Convert-RdSession
+                            } catch {
+                                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
                             }
                         } -ThrottleLimit 12
                     } `
@@ -214,12 +298,20 @@ class ServersCollector {
             } else { # on se$true
                 # on next call, wait and read started thread
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
+                $this.LastResultDateTime = Get-Date
                 $this.Job = $null
+                $this.LastResultDateTime = $null
                 $this.GetRDSessions()
             }
         }
         # if($This.Job.status -eq 'Completed') {Remove-Job $this.Job}
         return $this.Items
+    }
+    [PSCustomObject[]] RefreshRDSessions () {
+        $CurrentRDSItem = $this.Items | Where-Object {
+            $_.Sessions
+        }
+        return $this.GetRDSessions($CurrentRDSItem)
     }
     [PSCustomObject[]] GetRDSessions () {
         return $this.GetRDSessions($this.Items)
@@ -227,12 +319,13 @@ class ServersCollector {
     [PSCustomObject[]] GetRDSessions ($ComputerItems) {
         if($ComputerItems){ # on first call, just start thread
             if (!$this.Job) {
+                Write-Host "Create Job","Mantis_Sessions_$($this.Domain)" -ForegroundColor DarkBlue
                 $this.Items | ForEach-Object {
                     $_.Sessions = $null
                 }
                 $this.Job = Start-ThreadJob `
                     -Name "Mantis_Sessions_$($this.Domain)" `
-                    -InitializationScript {Import-Module PSWrite,PSRdSessions -DisableNameChecking -SkipEditionCheck} `
+                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module PSWrite,PSRdSessions -DisableNameChecking -SkipEditionCheck} `
                     -ScriptBlock {
                         param($Computers)
                         $Computers | ForEach-Object -Parallel {
@@ -241,10 +334,12 @@ class ServersCollector {
                     } -ArgumentList @(,$ComputerItems) `
                     # -StreamingHost $Global:host
             } else { # on se$true
+                Write-Host "Remove Job","Mantis_Sessions_$($this.Domain)" -ForegroundColor DarkGreen
                 # on next call, wait and wait and read started thread
                 $this.Job | Receive-Job -Wait -AutoRemoveJob
                 # $this.Job | Write-Object -PassThru
                 $this.Job = $null
+                $this.LastResultDateTime = $null
                 return $this.Items.Sessions
             }
         }
@@ -278,6 +373,7 @@ class Mantis {
                 Name = $Current
                 Servers = [ServersCollector]::new($Current)
                 Groups = [GroupsCollector]::new($Current)
+                Trash = [TrashCollector]::new($Current)
                 Users = [UsersCollector]::new($Current)
                 DFS = [DFSCollector]::new($Current)
             }
@@ -290,6 +386,7 @@ class Mantis {
                     Name = $_
                     Servers = [ServersCollector]::new($_)
                     Groups = [GroupsCollector]::new($_)
+                    Trash = [TrashCollector]::new($_)
                     Users = [UsersCollector]::new($_)
                     DFS = [DFSCollector]::new($_)
                 }
@@ -301,9 +398,16 @@ class Mantis {
         $this.SelectedDomain = $this.GetDomains() | Where-Object{
             $_.Name -like $Name
         }
+        $this.SelectedDomain.Servers.Reset()
+        $this.SelectedDomain.Users.Reset()
+        $this.SelectedDomain.Groups.Reset()
+        $this.SelectedDomain.Trash.Reset()
+        $this.SelectedDomain.Dfs.Reset()
+
         # $this.SelectedDomain.Servers.Get()
         # $this.SelectedDomain.Users.Get()
         # $this.SelectedDomain.Groups.Get()
+        # $this.SelectedDomain.Trash.Get()
         # $this.SelectedDomain.Dfs.Get()
         return $this.SelectedDomain
     }

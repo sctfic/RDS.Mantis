@@ -55,7 +55,7 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'SelectedIndexChanged'
-                    $Global:ControlHandler['PanelLeft'].Width = 200
+                    $Global:ControlHandler['PanelLeft'].Width = 220
                     $Global:ControlHandler['PanelRight'].Width = 100
                     $Global:ControlHandler['Logs'].Height = 58
                 }
@@ -73,7 +73,7 @@
             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                 @{  ControlType = 'TabPage'
                     Name        = 'RDSFarm'
-                    Text        = 'Ferme RDS'
+                    Text        = 'Sessions RDS'
                     Dock        = 'Fill'
                     Events      = @{}
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -134,8 +134,12 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
+                                                    $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
                                                     if ($global:RDS_Selected | Stop-DGV_RDSSessions) {
-                                                        Set-SelectedRDServers
+                                                        $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | ForEach-Object {
+                                                            $Global:ControlHandler['DataGridView_Sessions'].Rows.Remove($_)
+                                                        }
+                                                        $Global:Mantis.SelectedDomain.Servers.RefreshRDSessions()
                                                     }
                                                 }
                                             }
@@ -152,6 +156,7 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
+                                                    $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -165,6 +170,7 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
+                                                    $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -178,16 +184,14 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
-                                                    $Srv = ($Global:ControlHandler['DataGridView_Sessions'].Columns['ComputerName'].Value | Write-Object -PassThru -foreGroundColor Magenta | Where-Object {
-                                                        $_
-                                                    } | Sort-Object -Unique)
+                                                    $Global:Mantis.SelectedDomain.Servers.RefreshRDSessions()
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                             )
                                         }
                                     )
-                                }
+                                },
                                 @{ ControlType = 'DataGridViewTextBoxColumn'
                                     HeaderText = 'ComputerName'
                                     Width = 140
@@ -263,6 +267,12 @@
                                     Width = 0
                                 }
                             )
+                        },
+                        @{  ControlType = 'ProgressBar'
+                            Name        = 'ProgressBar_DataGridView_Sessions'
+                            Style       = 'Marquee'
+                            Dock        = 'Top'
+                            Height      = 5
                         }
                     )
                 },
@@ -295,90 +305,127 @@
                                 }
                             }
                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
-                                @{
+                                        @{  ControlType = 'ContextMenuStrip'
+                                        Dock        = 'Fill'
+                                        Events      = @{
+                                            Opening    = [Scriptblock]{ # Event
+                                                Invoke-EventTracer $this 'MenuEnter'
+                                                $Nb = $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows.count
+                                                $Global:ControlHandler['ContextMenuStrip_RDSessions_Title'].text = "$Nb Accounts"
+                                            }
+                                        }
+                                        Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                        @{
+                                            ControlType = 'ToolStripLabel'
+                                            Name        = 'ContextMenuStrip_RDSessions_Title'
+                                            Text        = 'X Accounts'
+                                        },
+                                        @{ ControlType = 'ToolStripSeparator'
+                                        },
+                                        @{
+                                            ControlType = 'ToolStripMenuItem'
+                                            ShortcutKeys = 'Delete'
+                                            ShortcutKeyDisplayString = 'Supp.'
+                                            Text        = 'Supprimer le compte'
+                                            Events      = @{
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this.Text 'Click'
+                                                    $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows.Tag | Write-Object -PassThru
+                                                    $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows | ForEach-Object {
+                                                        try {
+                                                            $_.Tag | Remove-ADUser -Confirm
+                                                            $Global:ControlHandler['DataGridView_ADAccounts'].Rows.Remove($_)
+                                                        } catch {
+                                                            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                            )
+                                        },
+                                        @{ ControlType = 'ToolStripSeparator'
+                                        },
+                                        @{
+                                            ControlType = 'ToolStripMenuItem'
+                                            ShortcutKeys = 'Ctrl+D'
+                                            ShortcutKeyDisplayString = 'Ctrl+D'
+                                            Text        = "Dupliquer"
+                                            Enabled     = $False
+                                            Events      = @{
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this.Text 'Click'
+                                                    $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                            )
+                                        }
+                                    )
+                                },
+                                @{  HeaderText = 'NtAccountName'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'NtAccountName'
                                     Width = 120
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'Display Name'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Display Name'
+                                    Width = 160
+                                },
+                                @{  HeaderText = 'Email'
+                                    ControlType = 'DataGridViewTextBoxColumn'
+                                    Width = 160
+                                },
+                                @{  HeaderText = 'Type'
+                                    ControlType = 'DataGridViewTextBoxColumn'
                                     Width = 120
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'Status'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Sid'
-                                    Width = 45
-                                    
+                                    Width = 80
                                 },
-                                @{
+                                @{  HeaderText = 'Phone'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Email'
-                                    Width = 130
-                                    
-                                },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Type'
-                                    Width = 100
-                                    
-                                },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'State'
-                                    Width = 50
-                                    
-                                },
-                                @{
-                                    ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Phone'
                                     Width = 110
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'Description'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Description'
-                                    Width = 60
-                                    
+                                    Width = 240
                                 },
-                                @{
+                                @{  HeaderText = 'OU'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Facturation'
                                     Width = 120
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'Sid'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'PasswordType'
+                                    Width = 45
+                                },
+                                @{  HeaderText = 'PasswordType'
+                                    ControlType = 'DataGridViewTextBoxColumn'
                                     Width = 120
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'CreateDate'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'CreateDate'
                                     Width = 120
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'LastLogonDate'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'LastLogonDate'
                                     Width = 120
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'ExpireDate'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'ExpireDate'
                                     Width = 120
-                                    
                                 },
-                                @{
+                                @{  HeaderText = 'Groupes'
                                     ControlType = 'DataGridViewTextBoxColumn'
-                                    HeaderText = 'Groupes'
                                     Width = 200
                                 }
                             )
+                        },
+                        @{  ControlType = 'ProgressBar'
+                            Name        = 'ProgressBar_DataGridView_ADAccounts'
+                            Style       = 'Marquee'
+                            Dock        = 'Top'
+                            Height      = 5
                         }
                     )
                 }
@@ -400,7 +447,7 @@
             }
             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                 @{  ControlType = 'GroupBox'
-                    Name        = 'Target'
+                    Name        = 'TargetForest'
                     Text        = 'Selected Forest'
                     Dock        = 'Fill'
                     Events      = @{}
@@ -415,17 +462,18 @@
                                     switch ($this.SelectedTab.Name) {
                                         'Servers' {
                                             $Global:mantis.SelectedDomain.Servers.Get()
-                                            # $Global:ControlHandler['ListServers'].Enabled = $false
                                         }
                                         'Groups' {
                                             $Global:mantis.SelectedDomain.Groups.Get()
-                                            # $Global:ControlHandler['ListGroups'].Enabled = $false
                                         }
                                         'DFS' {
                                             if ($Mantis.SelectedDomain.DFS.Root -notlike $Global:ControlHandler['TreeDFS'].TopNode.FullPath) {
-                                                # $Global:ControlHandler['TreeDFS'].Enabled = $false
+                                                Start-Loading 'TreeDFS'
                                                 Update-MantisDFS
                                             }
+                                        }
+                                        'Trash' {
+                                            $Global:mantis.SelectedDomain.Trash.Get()
                                         }
                                         default {}
                                     }
@@ -441,9 +489,7 @@
                                         @{  ControlType      = 'ListView'
                                             Name             = 'ListServers'
                                             Dock             = 'Fill'
-                                            # Activation       = 'OneClick'
                                             FullRowSelect    = $True
-                                            # HoverSelection   = $True
                                             ShowGroups       = $True
                                             ShowItemToolTips = $True
                                             View             = 'Details'
@@ -501,17 +547,17 @@
                                                 @{
                                                     ControlType = 'ColumnHeader'
                                                     Text        = 'OS'
-                                                    Width        = 240
+                                                    Width        = 200
                                                 }
                                                 @{
                                                     ControlType = 'ColumnHeader'
                                                     Text        = 'Install'
-                                                    Width        = 120
+                                                    Width        = 100
                                                 }
                                                 @{
                                                     ControlType = 'ColumnHeader'
                                                     Text        = 'RDP Version'
-                                                    Width        = 40
+                                                    Width        = 30
                                                 }
                                                 @{
                                                     ControlType = 'ColumnHeader'
@@ -519,6 +565,12 @@
                                                     Width        = 0
                                                 }
                                             )
+                                        },
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_ListServers'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
                                         }
                                     )
                                 },
@@ -547,6 +599,7 @@
                                                 }
                                                 DoubleClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'DoubleClick'
+                                                    $this.SelectedItems | Write-Object -PassThru
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -559,18 +612,43 @@
                                                     ControlType = 'ColumnHeader'
                                                     Text        = '#'
                                                     Width        = 50
-                                                }
+                                                },
                                                 @{
                                                     ControlType = 'ColumnHeader'
                                                     Text        = 'Imbriqué'
                                                     Width        = 150
-                                                }
-                                                @{
-                                                    ControlType = 'ColumnHeader'
-                                                    Text        = 'DN'
-                                                    Width        = 0
+                                                },
+                                                @{  ControlType = 'ContextMenuStrip'
+                                                    # Name        = 'ContextMenuStrip_MainContext'
+                                                    Events      = @{
+                                                        Enter    = [Scriptblock]{ # Event
+                                                            Invoke-EventTracer $this 'Enter'
+                                                        }
+                                                    }
+                                                    Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                                        @{
+                                                            ControlType = 'ToolStripMenuItem'
+                                                            Text        = 'Supprimer !'
+                                                            # Enabled     = $False
+                                                            Events      = @{
+                                                                Click    = [Scriptblock]{ # Event
+                                                                    Invoke-EventTracer $this 'Click'
+                                                                    $Global:ControlHandler['ListGroups'].SelectedItems | Write-Object -PassThru | ForEach-Object {
+                                                                        $_.Tag | Remove-ADGroup -Confirm:$False
+                                                                        $_.remove()
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    )
                                                 }
                                             )
+                                        },
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_ListGroups'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
                                         }
                                     )
                                 },
@@ -617,6 +695,116 @@
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                             )
+                                        },
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_TreeDFS'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
+                                        }
+                                    )
+                                },
+                                @{  ControlType = 'TabPage'
+                                    # Name        = 'TabPage'
+                                    Text        = 'Trash'
+                                    Dock        = 'Fill'
+                                    Events      = @{
+                                    }
+                                    Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                        @{  ControlType = 'ListView'
+                                            Name             = 'ListTrash'
+                                            Dock             = 'Fill'
+                                            # Activation       = 'OneClick'
+                                            FullRowSelect    = $True
+                                            # HoverSelection   = $True
+                                            ShowGroups       = $True
+                                            ShowItemToolTips = $True
+                                            View             = 'Details'
+                                            Events      = @{
+                                                ColumnClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'ColumnClick'
+                                                    Set-ListViewSorted  -listView $this -column $_.Column
+                                                }
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'Click' # left and right but not on empty area
+                                                }
+                                                DoubleClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'DoubleClick'
+                                                    $this.SelectedItems | Write-Object -PassThru
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'Name'
+                                                    Width        = 150
+                                                },
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'FullName'
+                                                    Width        = 0
+                                                },
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'Deleted On'
+                                                    Width        = 140
+                                                },
+                                                @{
+                                                    ControlType = 'ColumnHeader'
+                                                    Text        = 'LastKnownPath'
+                                                    Width        = 300
+                                                },
+                                                @{  ControlType = 'ContextMenuStrip'
+                                                    # Name        = 'ContextMenuStrip_MainContext'
+                                                    Events      = @{
+                                                        Enter    = [Scriptblock]{ # Event
+                                                            Invoke-EventTracer $this 'Enter'
+                                                        }
+                                                    }
+                                                    Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                                        @{
+                                                            ControlType = 'ToolStripMenuItem'
+                                                            ShortcutKeys = 'Ctrl+Z'
+                                                            ShortcutKeyDisplayString = 'Ctrl+Z'
+                                                            Text        = 'Restaurer'
+                                                            Events      = @{
+                                                                Click    = [Scriptblock]{ # Event
+                                                                    Invoke-EventTracer $this 'Click'
+                                                                    $Global:ControlHandler['ListTrash'].SelectedItems | ForEach-Object {
+                                                                        $_.Tag | Restore-ADObject -PassThru | ForEach-Object { $_ | Set-ADUser -Description "Restaured on $(get-date) by $(whoami.exe) ($_)" }
+                                                                        $_.remove()
+                                                                    }
+                                                                }
+                                                            }
+                                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                                            )
+                                                        },
+                                                        @{
+                                                            ControlType = 'ToolStripSeparator'
+                                                        },
+                                                        @{
+                                                            ControlType = 'ToolStripMenuItem'
+                                                            Text        = 'Supprimer definitivement !'
+                                                            # Enabled     = $False
+                                                            Events      = @{
+                                                                Click    = [Scriptblock]{ # Event
+                                                                    Invoke-EventTracer $this 'Click'
+                                                                    $Global:ControlHandler['ListTrash'].SelectedItems | ForEach-Object {
+                                                                        $_.Tag | Remove-ADObject -IncludeDeletedObjects -Confirm
+                                                                        $_.remove()
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    )
+                                                }
+                                            )
+                                        },
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_ListTrash'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
                                         }
                                     )
                                 }
@@ -632,6 +820,7 @@
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                         @{  ControlType = 'TreeView'
                             Name        = 'TreeForest'
+                            HideSelection = $False
                             ShowNodeToolTips = $true
                             Dock        = 'Fill'
                             Events      = @{
@@ -644,10 +833,12 @@
                                 AfterSelect =[Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'AfterSelect'
                                     Get-Job | Where-Object {
-                                        $_.Name -match"^Mantis_(\w|-)+_$($Global:mantis.SelectedDomain.Name)"
-                                    } | Remove-Job -Force
+                                        $_.Name -match "^Mantis_(\w|-)+_.+"
+                                    } | Write-Object -PassThru | Remove-Job -Force
                                     $Global:mantis.Domain($this.SelectedNode.Text)
                                     $Global:SequenceStart.Restart()
+                                    $Global:ControlHandler['TargetForest'].Text = "Forest : [$($this.SelectedNode.Text)]"
+                                    
                                     # $tab = $($Global:ControlHandler['TabsSelectedForest'].SelectedTab.Name)
                                     # $Global:ControlHandler['TabsSelectedForest'].DeselectTab($tab)
                                     # $Global:ControlHandler['TabsSelectedForest'].SelectTab($tab)
@@ -669,7 +860,7 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
-                    $Global:ControlHandler['PanelLeft'].Width = 200
+                    $Global:ControlHandler['PanelLeft'].Width = 220
                     $Global:ControlHandler['PanelRight'].Width = 320
                     $Global:ControlHandler['Logs'].Height = 58
                 }
