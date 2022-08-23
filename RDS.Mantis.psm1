@@ -98,7 +98,6 @@ function Convert-AdUsers {
         }
     }
     end {
-        Write-Host 'End!'
     }
 }
 # PSWinForm-Builder\New-WinForm -DefinitionFile "$PSScriptRoot\GUI\MantisForm.psd1" -Verbose -PreloadModules PsWrite,rds.mantis

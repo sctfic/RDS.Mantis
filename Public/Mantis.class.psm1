@@ -237,37 +237,43 @@ class ServersCollector {
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
             if(!$this.Job){ # on first call, just start thread
-                Write-Host "Create Job","Mantis_Sessions_$($this.Domain)" -ForegroundColor DarkBlue
+                Write-Host "Create Job","Mantis_Servers_$($this.Domain)" -ForegroundColor DarkBlue
                 $this.Job = Start-ThreadJob `
                     -StreamingHost $Global:host `
                     -Name "Mantis_Srv_$($this.Domain)" `
-                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite} `
+                    -InitializationScript {$PSModuleAutoloadingPreference=1} `
                     -ScriptBlock {
                         param($Domain)
+                        Import-Module Microsoft.PowerShell.Utility, ActiveDirectory, PsWrite
+                        PsWrite\Write-LogStep 'Collector Get-ADComputer',$Domain -mode wait
                         
-                        Write-LogStep 'Collector Get-ADComputer',$Domain -mode wait
-                        Get-ADComputer -Filter { operatingSystem -Like '*Windows Server*'} -Properties OperatingSystem,operatingSystem,WhenCreated,whenCreated -Server $Domain | ForEach-Object -Parallel {
+                        ActiveDirectory\Get-ADComputer -Filter {operatingSystem -Like '*Windows Server*'} `
+                            -Properties OperatingSystem,operatingSystem,WhenCreated,whenCreated `
+                            -Server $Domain | ForEach-Object -Parallel {
+                                Import-Module PsWrite
+                                Import-Module PsBright -SkipEditionCheck -DisableNameChecking # -Function Test-TcpPort,Get-Registry,Get-RegBase
                             # function Write-LogStep { }
+                            # 'DNSHostName',$_.DNSHostName | Write-Object -PassThru
                             $DNSHostName = $_.DNSHostName
                             $IP = $null
                             try {
                                 $IP = [string][System.Net.Dns]::GetHostAddresses($DNSHostName).IPAddressToString -Split(' ') | Sort-Object -Unique
+                                if ($IP -and (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server").Type -eq 'Container' -and (Test-TcpPort $_.DNSHostName -Quick -ConfirmIfDown)) {
+                                    $OperatingSystem = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProductName").value
+                                    $CurrentBuild = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuild").value
+                                    $ProductVersion = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\ProductVersion").value
+                                    $fDenyTSConnections = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections").value
+                                    $TSUserEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSUserEnabled").value
+                                    $TSEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSEnabled").value
+                                    # if ($TSEnabled) {
+                                        $MemberOfFarm = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryClusterName").value
+                                        $ServerBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryLocation").value
+                                    # }
+                                }
                             } catch {
                                 Write-Error $_
                                 Write-Error "Impossible de determiner l'adresse IP de [$DNSHostName]"
                                 # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", "Impossible de determiner l'adresse IP de [$DNSHostName]" error
-                            }
-                            if ($IP -and (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server").Type -eq 'Container' -and (Test-TcpPort $_.DNSHostName -Quick -ConfirmIfDown)) {
-                                $OperatingSystem = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProductName").value
-                                $CurrentBuild = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuild").value
-                                $ProductVersion = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\ProductVersion").value
-                                $fDenyTSConnections = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections").value
-                                $TSUserEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSUserEnabled").value
-                                $TSEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSEnabled").value
-                                # if ($TSEnabled) {
-                                    $MemberOfFarm = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryClusterName").value
-                                    $ServerBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryLocation").value
-                                # }
                             }
                             try {
                                 [PSCustomObject]@{
@@ -325,9 +331,10 @@ class ServersCollector {
                 }
                 $this.Job = Start-ThreadJob `
                     -Name "Mantis_Sessions_$($this.Domain)" `
-                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module PSWrite,PSRdSessions -DisableNameChecking -SkipEditionCheck} `
+                    -InitializationScript {$PSModuleAutoloadingPreference=1} `
                     -ScriptBlock {
                         param($Computers)
+                        Import-Module PSWrite,PSRdSessions -DisableNameChecking -SkipEditionCheck
                         $Computers | ForEach-Object -Parallel {
                             $_.Sessions = $_.Name | Get-RdSession | Convert-RdSession
                         } -ThrottleLimit 12 -TimeoutSeconds 20

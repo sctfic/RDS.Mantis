@@ -95,6 +95,7 @@
                                 }
                                 Click    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'Click' # left and right but not on empty area
+                                    $global:RDS_LastSelected = $this.SelectedRows[-1] | Convert-DGV_RDS_Row
                                 }
                                 DoubleClick    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'DoubleClick'
@@ -112,17 +113,19 @@
                                                 $Srv = ($global:RDS_Selected.ComputerName | Where-Object {
                                                     $_
                                                 } | Sort-Object -Unique).count
+
                                                 $Sessions = ($global:RDS_Selected.NtAccountName | Where-Object {
                                                     $_
                                                 }).count
-                                                $Global:ControlHandler['ContextMenuStrip_RDSessions_Title'].text = "$Sessions Users sur $Srv Serveurs"
+                                                $Global:ControlHandler['ContextMenuStrip_RDSessions_Title'].Text = "$Sessions Sessions sur $Srv Serveurs"
+                                                Write-Host $Sessions, $Global:ControlHandler['ContextMenuStrip_RDSessions_Title'].Text -ForegroundColor Green
                                             }
                                         }
                                         Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                         @{
                                             ControlType = 'ToolStripLabel'
                                             Name        = 'ContextMenuStrip_RDSessions_Title'
-                                            Text        = 'X Users sur Y Serveurs'
+                                            Text        = 'X Sessions sur Y Serveurs'
                                         },
                                         @{ ControlType = 'ToolStripSeparator'
                                         },
@@ -311,13 +314,13 @@
                                             Opening    = [Scriptblock]{ # Event
                                                 Invoke-EventTracer $this 'MenuEnter'
                                                 $Nb = $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows.count
-                                                $Global:ControlHandler['ContextMenuStrip_RDSessions_Title'].text = "$Nb Accounts"
+                                                $Global:ControlHandler['ContextMenuStrip_ADAccounts_Title'].text = "$Nb Accounts"
                                             }
                                         }
                                         Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                         @{
                                             ControlType = 'ToolStripLabel'
-                                            Name        = 'ContextMenuStrip_RDSessions_Title'
+                                            Name        = 'ContextMenuStrip_ADAccounts_Title'
                                             Text        = 'X Accounts'
                                         },
                                         @{ ControlType = 'ToolStripSeparator'
@@ -330,7 +333,6 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
-                                                    $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows.Tag | Write-Object -PassThru
                                                     $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows | ForEach-Object {
                                                         try {
                                                             $_.Tag | Remove-ADUser -Confirm
@@ -363,7 +365,7 @@
                                         }
                                     )
                                 },
-                                @{  HeaderText = 'NtAccountName'
+                                @{  HeaderText = 'SamAccountName'
                                     ControlType = 'DataGridViewTextBoxColumn'
                                     Width = 120
                                 },
@@ -509,9 +511,9 @@
                                                 }
                                                 ItemSelectionChanged  = [Scriptblock]{ # Event
                                                     if($_.IsSelected){
-                                                        $Global:LVSrvChange = $_.item.Text #| Write-Object -PassThru -fore Green
+                                                        $Global:LVSrvChange = $_.item.Text
                                                     } else { 
-                                                        $Global:LVSrvChange = $_.item.Text #| Write-Object -PassThru -fore red
+                                                        $Global:LVSrvChange = $_.item.Text
                                                     } 
                                                     $Global:ControlHandler['DataGridView_Sessions'].Visible = $False
                                                 }
@@ -527,7 +529,6 @@
                                                 }
                                                 MouseUp = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'MouseUp'
-                                                    # $this.SelectedItems.Text | Write-Object -PassThru
                                                     if ($Global:LVSrvChange -and !($Global:LVSrvKeyDown.Control -or $Global:LVSrvKeyDown.Shift)){
                                                         Set-SelectedRDServers
                                                     }
@@ -633,7 +634,7 @@
                                                             Events      = @{
                                                                 Click    = [Scriptblock]{ # Event
                                                                     Invoke-EventTracer $this 'Click'
-                                                                    $Global:ControlHandler['ListGroups'].SelectedItems | Write-Object -PassThru | ForEach-Object {
+                                                                    $Global:ControlHandler['ListGroups'].SelectedItems | ForEach-Object {
                                                                         $_.Tag | Remove-ADGroup -Confirm:$False
                                                                         $_.remove()
                                                                     }
@@ -834,7 +835,7 @@
                                     Invoke-EventTracer $this 'AfterSelect'
                                     Get-Job | Where-Object {
                                         $_.Name -match "^Mantis_(\w|-)+_.+"
-                                    } | Write-Object -PassThru | Remove-Job -Force
+                                    } | Remove-Job -Force
                                     $Global:mantis.Domain($this.SelectedNode.Text)
                                     $Global:SequenceStart.Restart()
                                     $Global:ControlHandler['TargetForest'].Text = "Forest : [$($this.SelectedNode.Text)]"
@@ -923,7 +924,7 @@
                     Dock        = 'Bottom'
                 },
                 @{  ControlType = 'GroupBox'
-                    Name        = 'UserName'
+                    Name        = 'UserNameGbx'
                     Text        = 'User'
                     Dock        = 'Bottom'
                     Height      = 240
@@ -931,6 +932,7 @@
                         Enter = [Scriptblock]{ # Event
                             Invoke-EventTracer $this 'Enter'
                             $This.Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.8)
+                            $Global:ControlHandler['UserNameGbx'].Text = $Global:RDS_LastSelected.NtAccountName
                         }
                     }
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -966,6 +968,58 @@
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_LVUserADProp'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
+                                            visible     = $False
+                                        },
+                                        @{  ControlType = 'ListView'
+                                            Name             = 'LVUserADProp'
+                                            Dock             = 'Fill'
+                                            # Activation       = 'OneClick'
+                                            FullRowSelect    = $True
+                                            # HoverSelection   = $True
+                                            ShowGroups       = $True
+                                            ShowItemToolTips = $True
+                                            View             = 'Details'
+                                            Events      = @{
+                                                ColumnClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'ColumnClick'
+                                                    Set-ListViewSorted  -listView $this -column $_.Column
+                                                }
+                                                
+                                                Enter = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'Enter'
+                                                    Start-ThreadJob `
+                                                    -Name "Mantis_LVUserADProp_$($this.Domain)" `
+                                                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite;Import-Module RDS.Mantis -Function Convert-AdUsers} `
+                                                    -ScriptBlock {
+                                                        param($item)
+                                                        $item | Write-Object -PassThru | Update-MantisUserProp
+                                                        
+                                                    } -ArgumentList $Global:RDS_LastSelected
+                                                }
+                                                DoubleClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'DoubleClick'
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                                @{  Text        = 'Prop'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 120
+                                                },
+                                                @{  Text        = 'Value'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 220
+                                                },
+                                                @{  Text        = 'Complements'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 0
+                                                }
+                                            )
+                                        }
                                     )
                                 },
                                 @{  ControlType = 'TabPage'
@@ -974,6 +1028,56 @@
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_LVUserGroups'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
+                                        },
+                                        @{  ControlType = 'ListView'
+                                            Name             = 'ListView_LVUserGroups'
+                                            Dock             = 'Fill'
+                                            # Activation       = 'OneClick'
+                                            FullRowSelect    = $True
+                                            # HoverSelection   = $True
+                                            ShowGroups       = $True
+                                            ShowItemToolTips = $True
+                                            View             = 'Details'
+                                            Events      = @{
+                                                Enter    = @{ # Event
+                                                    Type = 'Thread'
+                                                    ScriptBlock = [Scriptblock]{
+                                                        param($ControlHandler, $ControllerName, $EventName)
+                                                        $Tabs = $ControlHandler['TabsRessources']
+                                                        $ListView = $($ControlHandler["$($Tabs.SelectedTab.Name)_LV"])
+                                                    }
+                                                }
+                                                ColumnClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'ColumnClick'
+                                                    Set-ListViewSorted  -listView $this -column $_.Column
+                                                }
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'Click' # left and right but not on empty area
+                                                }
+                                                DoubleClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'DoubleClick'
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                                @{  Text        = 'Col1'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 140
+                                                },
+                                                @{  Text        = 'Col2'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 120
+                                                }
+                                                @{  Text        = 'Col3'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 150
+                                                }
+                                            )
+                                        }
                                     )
                                 },
                                 @{  ControlType = 'TabPage'
