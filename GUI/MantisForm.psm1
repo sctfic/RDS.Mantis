@@ -260,23 +260,27 @@ function Update-MantisUsers {
     }
     process {
         foreach ($item in $Items) {
-            $lastAdded = $Target.rows.Add(@($item.NtAccountName, $item.DisplayName, $item.email, $item.Type, $item.Status, $item.Phone, $item.Description, $item.OU, $item.Sid, $item.PasswordType, $item.CreateDate, $item.LastLogonDate, $item.Expire, ($item.Groupes -join ("`n"))))
-            $lastAdded.Tag = $item.DistinguishedName
-            $lastRow = $Target.rows[$lastAdded]
-
-            if ($item.Status -eq 'Disabled') {
-                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DimGray # ColorComptesInActif
-            } elseif ($item.Type -match 'TSE.+') {
-                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::MediumBlue # ColorComptesActif
-            } elseif ($item.Type -match 'MailBox') {
-                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::SlateBlue # ColorBalOnly
-            } else {
-                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DarkViolet # ColorComptesSystem
-            }
-
-            if ($item.ExpireDate -and ($item.ExpireDate).AddDays(300) -gt (Get-Date)) {
-                $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::White
-                $lastRow.DefaultCellStyle.BackColor = [system.Drawing.Color]::Tomato
+            try {
+                $lastAdded = $Target.rows.Add(@($item.NtAccountName, $item.DisplayName, $item.email, $item.Type, $item.Status, $item.Phone, $item.Description, $item.OU, $item.Sid, $item.PasswordType, $item.CreateDate, $item.LastLogonDate, $item.Expire, ($item.Groupes -join ("`n"))))
+                $lastAdded.Tag = $item.DistinguishedName
+                $lastRow = $Target.rows[$lastAdded]
+                
+                if ($item.Status -eq 'Disabled') {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DimGray # ColorComptesInActif
+                } elseif ($item.Type -match 'TSE.+') {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::MediumBlue # ColorComptesActif
+                } elseif ($item.Type -match 'MailBox') {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::SlateBlue # ColorBalOnly
+                } else {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DarkViolet # ColorComptesSystem
+                }
+                
+                if ($item.ExpireDate -and ($item.ExpireDate).AddDays(300) -gt (Get-Date)) {
+                    $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::White
+                    $lastRow.DefaultCellStyle.BackColor = [system.Drawing.Color]::Tomato
+                }
+            } catch {
+                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
             }
         }
     }
