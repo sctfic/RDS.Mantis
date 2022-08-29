@@ -12,7 +12,7 @@
 RootModule = 'RDS.Mantis.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.0.1.32'
+ModuleVersion = '0.0.2.02'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -66,7 +66,7 @@ RequiredModules = @('Microsoft.PowerShell.Utility', 'PSWrite', 'PsWinForm-Builde
 # FormatsToProcess = @()
 
 # Modules to import as nested modules of the module specified in RootModule/ModuleToProcess
-NestedModules = @('Public\Mantis.class.psm1','Public\MantisConstructor.psm1')
+NestedModules = @('Public\Mantis.class.psm1','Public\MantisConstructor.psm1','GUI\MantisForm.psm1')
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
 FunctionsToExport = '*'

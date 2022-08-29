@@ -55,9 +55,9 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'SelectedIndexChanged'
-                    $Global:ControlHandler['PanelLeft'].Width = 220
-                    $Global:ControlHandler['PanelRight'].Width = 100
-                    $Global:ControlHandler['Logs'].Height = 58
+                    # $Global:ControlHandler['PanelLeft'].Width = 220
+                    # $Global:ControlHandler['PanelRight'].Width = 100
+                    # $Global:ControlHandler['Logs'].Height = 58
                 }
                 SelectedIndexChanged = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'SelectedIndexChanged'
@@ -96,6 +96,7 @@
                                 Click    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'Click' # left and right but not on empty area
                                     $global:RDS_LastSelected = $this.SelectedRows[-1] | Convert-DGV_RDS_Row
+                                    Start-Job4RightProperties
                                 }
                                 DoubleClick    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'DoubleClick'
@@ -302,6 +303,8 @@
                                 }
                                 Click    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'Click' # left and right but not on empty area
+                                    $global:RDS_LastSelected = $this.SelectedRows[-1] | Convert-DGV_AD_Row
+                                    Start-Job4RightProperties
                                 }
                                 DoubleClick    = [Scriptblock]{ # Event
                                     Invoke-EventTracer $this 'DoubleClick'
@@ -365,7 +368,7 @@
                                         }
                                     )
                                 },
-                                @{  HeaderText = 'SamAccountName'
+                                @{  HeaderText = 'NtAccountName'
                                     ControlType = 'DataGridViewTextBoxColumn'
                                     Width = 120
                                 },
@@ -442,9 +445,9 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
-                    $Global:ControlHandler['PanelLeft'].Width = 640
-                    $Global:ControlHandler['PanelRight'].Width = 100
-                    $Global:ControlHandler['Logs'].Height = 58
+                    # $Global:ControlHandler['PanelLeft'].Width = 640
+                    # $Global:ControlHandler['PanelRight'].Width = 100
+                    # $Global:ControlHandler['Logs'].Height = 58
                 }
             }
             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -861,20 +864,21 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
-                    $Global:ControlHandler['PanelLeft'].Width = 220
-                    $Global:ControlHandler['PanelRight'].Width = 320
-                    $Global:ControlHandler['Logs'].Height = 58
+                    # $Global:ControlHandler['PanelLeft'].Width = 220
+                    # $Global:ControlHandler['PanelRight'].Width = 320
+                    # $Global:ControlHandler['Logs'].Height = 58
+
                 }
             }
             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                 @{  ControlType = 'GroupBox'
-                    Name        = 'ServerName'
+                    Name        = 'ServerNameGbx'
                     Text        = 'Server'
                     Dock        = 'Fill'
                     Events      = @{
                         Enter = [Scriptblock]{ # Event
                             Invoke-EventTracer $this 'Enter'
-                            $Global:ControlHandler['UserName'].Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.2)
+                            # $Global:ControlHandler['UserNameGbx'].Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.2)
                         }
                     }
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -898,6 +902,46 @@
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                        @{  ControlType = 'ListView'
+                                            Name             = 'LVServerADProp'
+                                            Dock             = 'Fill'
+                                            # Activation       = 'OneClick'
+                                            FullRowSelect    = $True
+                                            # HoverSelection   = $True
+                                            ShowGroups       = $True
+                                            ShowItemToolTips = $True
+                                            View             = 'Details'
+                                            Events      = @{
+                                                ColumnClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'ColumnClick'
+                                                    Set-ListViewSorted  -listView $this -column $_.Column
+                                                }
+                                                DoubleClick    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this 'DoubleClick'
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                                @{  Text        = 'Prop'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 120
+                                                },
+                                                @{  Text        = 'Value'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 220
+                                                },
+                                                @{  Text        = 'Complements'
+                                                    ControlType = 'ColumnHeader'
+                                                    Width        = 0
+                                                }
+                                            )
+                                        },
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_LVServerADProp'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
+                                            visible     = $False
+                                        }
                                     )
                                 },
                                 @{  ControlType = 'TabPage'
@@ -911,6 +955,14 @@
                                 @{  ControlType = 'TabPage'
                                     Name        = 'SrvReg'
                                     Text        = 'Registre'
+                                    Dock        = 'Fill'
+                                    Events      = @{}
+                                    Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                    )
+                                },
+                                @{  ControlType = 'TabPage'
+                                    Name        = 'SrvProfiles'
+                                    Text        = 'Profiles'
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -932,7 +984,6 @@
                         Enter = [Scriptblock]{ # Event
                             Invoke-EventTracer $this 'Enter'
                             $This.Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.8)
-                            $Global:ControlHandler['UserNameGbx'].Text = $Global:RDS_LastSelected.NtAccountName
                         }
                     }
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -968,13 +1019,6 @@
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
-                                        @{  ControlType = 'ProgressBar'
-                                            Name        = 'ProgressBar_LVUserADProp'
-                                            Style       = 'Marquee'
-                                            Dock        = 'Top'
-                                            Height      = 5
-                                            visible     = $False
-                                        },
                                         @{  ControlType = 'ListView'
                                             Name             = 'LVUserADProp'
                                             Dock             = 'Fill'
@@ -988,18 +1032,6 @@
                                                 ColumnClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'ColumnClick'
                                                     Set-ListViewSorted  -listView $this -column $_.Column
-                                                }
-                                                
-                                                Enter = [Scriptblock]{ # Event
-                                                    Invoke-EventTracer $this 'Enter'
-                                                    Start-ThreadJob `
-                                                    -Name "Mantis_LVUserADProp_$($this.Domain)" `
-                                                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite;Import-Module RDS.Mantis -Function Convert-AdUsers} `
-                                                    -ScriptBlock {
-                                                        param($item)
-                                                        $item | Write-Object -PassThru | Update-MantisUserProp
-                                                        
-                                                    } -ArgumentList $Global:RDS_LastSelected
                                                 }
                                                 DoubleClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'DoubleClick'
@@ -1019,6 +1051,13 @@
                                                     Width        = 0
                                                 }
                                             )
+                                        },
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_LVUserADProp'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
+                                            visible     = $False
                                         }
                                     )
                                 },
@@ -1028,12 +1067,6 @@
                                     Dock        = 'Fill'
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
-                                        @{  ControlType = 'ProgressBar'
-                                            Name        = 'ProgressBar_LVUserGroups'
-                                            Style       = 'Marquee'
-                                            Dock        = 'Top'
-                                            Height      = 5
-                                        },
                                         @{  ControlType = 'ListView'
                                             Name             = 'ListView_LVUserGroups'
                                             Dock             = 'Fill'
@@ -1077,6 +1110,12 @@
                                                     Width        = 150
                                                 }
                                             )
+                                        },
+                                        @{  ControlType = 'ProgressBar'
+                                            Name        = 'ProgressBar_LVUserGroups'
+                                            Style       = 'Marquee'
+                                            Dock        = 'Top'
+                                            Height      = 5
                                         }
                                     )
                                 },
@@ -1185,8 +1224,8 @@
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'SelectedIndexChanged'
-                    $Global:ControlHandler['Logs'].Height = 240
-                    $Global:ControlHandler['UserName'].Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.2)
+                    # $Global:ControlHandler['Logs'].Height = 240
+                    # $Global:ControlHandler['UserNameGbx'].Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.2)
                 }
             }
             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]

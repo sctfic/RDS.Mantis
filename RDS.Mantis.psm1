@@ -74,7 +74,7 @@ function Convert-AdUsers {
                     Tel_interne          = "$($Item.ipPhone)"
                     Password             = $null
                     Title                = "$($item.Title)"
-                    AddressBookMembers   = "$($item.showInAddressBook)"
+                    AddressBookMembers   = $item.showInAddressBook
                     Description          = "$($Item.description)"
                     # PasswordType         = $PassWordType
                     PasswordDate         = $(try {$item.PasswordLastSet.ToString()} catch {''})
@@ -100,5 +100,6 @@ function Convert-AdUsers {
     end {
     }
 }
+
 # PSWinForm-Builder\New-WinForm -DefinitionFile "$PSScriptRoot\GUI\MantisForm.psd1" -Verbose -PreloadModules PsWrite,rds.mantis
 

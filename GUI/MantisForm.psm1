@@ -29,9 +29,9 @@ function Start-WatchTimer {
         $Global:SequenceStart = New-Sequence @(
                 {$Mantis.SelectedDomain.Servers.Get()},
                 # {$Mantis.SelectedDomain.DFS.Get()},
-                {$Mantis.SelectedDomain.Users.Get()}
-                # {$Mantis.SelectedDomain.Groups.Get()}
-                # {$Mantis.SelectedDomain.Trash.Get()}
+                {$Mantis.SelectedDomain.Users.Get()},
+                {$Mantis.SelectedDomain.Groups.Get()},
+                {$Mantis.SelectedDomain.Trash.Get()}
             )
     }
     process {
@@ -57,15 +57,24 @@ function Start-WatchTimer {
                             'Mantis_Trash_.+' {
                                 $Mantis.SelectedDomain.Trash.Get() | Update-MantisTrash
                             }
-                            'Mantis_LVUserADProp_.+' {
-                                
+                            default {
+                                $TargetName = ($thread.Name -split('_'))[1]
+                                try {
+                                    $Target = $Global:ControlHandler[$TargetName]
+                                    $Target.Enabled = $false
+                                    $Target.BeginUpdate()
+                                    $Target.Items.Clear()
+                                } catch {
+                                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                }
+                                Receive-Job $thread.Name -Wait -AutoRemoveJob | Update-ListView -listView $Target
+                                try {
+                                    $Target.Enabled = $true
+                                    $Global:ControlHandler["ProgressBar_$TargetName"].Visible = $false
+                                } catch {
+                                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                }
                             }
-                            # 'Mantis_DFS_.+' { # pas de thread, tres rapide en mode AD
-                            #     Write-Host 'DFS ici' -BackgroundColor Magenta
-                            #     $Mantis.SelectedDomain.DFS | Update-MantisDFS
-                            #     Write-Host 'DFS la' -BackgroundColor Magenta
-                            # }
-                            default {}
                         }
                         Write-Host $thread.Name -ForegroundColor DarkGreen
                     } catch {
@@ -85,7 +94,6 @@ function Start-WatchTimer {
                         switch -Regex ($thread.Name) {
                             'Mantis_Srv_.+' { $WinControl = 'ListServers' }
                             'Mantis_Sessions_.+' { $WinControl = 'DataGridView_Sessions' }
-                            # 'Mantis_DFS_.+' { $WinControl = 'TreeDFS' } # pas de thread, tres rapide en mode AD
                             'Mantis_Usr_.+' { $WinControl = 'DataGridView_ADAccounts' }
                             'Mantis_Grp_.+' { $WinControl = 'ListGroups' }
                             'Mantis_Trash_.+' { $WinControl = 'ListTrash' }
@@ -115,7 +123,244 @@ function Start-Loading {
     } catch {
         # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
     }
+}
+function Start-Job4RightProperties {
 
+    $Job = Get-Job -Name "Mantis_LVUserADProp_$($mantis.SelectedDomain.Name)" -ea 0
+    if ((!$Job -or $job.PSBeginTime -lt (Get-Date).AddSeconds(-10)) -and $Global:ControlHandler['UserNameGbx'].Text -ne $Global:RDS_LastSelected.NtAccountName){
+        $Job | Remove-Job -Force
+        $Global:ControlHandler['UserNameGbx'].Text = $Global:RDS_LastSelected.NtAccountName
+
+        Start-ThreadJob `
+            -Name "Mantis_LVUserADProp_$($mantis.SelectedDomain.Name)" `
+            -InitializationScript {} `
+            -ScriptBlock {
+                param($item)
+                Import-Module ActiveDirectory,PsWrite,RDS.Mantis
+                Import-module PSBright -Function Get-MailInfos,Get-MailProvider,Get-ExchMailProperty -SkipEditionCheck -DisableNameChecking
+                # $item | Write-Object -PassThru
+                $item | Update-MantisUserProp
+            } -ArgumentList $Global:RDS_LastSelected
+    }
+    
+    $Job = Get-Job -Name "Mantis_LVServerADProp_$($mantis.SelectedDomain.Name)" -ea 0
+    if ((!$Job -or $job.PSBeginTime -lt (Get-Date).AddSeconds(-10)) -and $Global:ControlHandler['ServerNameGbx'].Text -ne $Global:RDS_LastSelected.NtAccountName){
+        $Job | Remove-Job -Force
+        $Global:ControlHandler['ServerNameGbx'].Text = $Global:RDS_LastSelected.ComputerName
+
+        Start-ThreadJob `
+            -Name "Mantis_LVServerADProp_$($mantis.SelectedDomain.Name)" `
+            -InitializationScript {} `
+            -ScriptBlock {
+                param($item)
+                Import-Module ActiveDirectory,PsWrite,RDS.Mantis
+                # $item | Write-Object -PassThru
+                $item | Update-MantisServerProp
+            } -ArgumentList $Global:RDS_LastSelected
+    }
+}
+function Update-MantisServerProp {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items,
+        $Target = $null # Global:ControlHandler['LVServerADProp']
+    )
+    begin {
+        $LstView = @()
+    }
+    process {
+        try {
+            $ADProperties = Get-ADComputer ($Items.ComputerName -replace(".$($Items.domain)")) -Properties * -Server $Items.Domain
+            $ADProperties.PSObject.Properties | ForEach-Object {
+                [PSCustomObject]@{
+                    FirstColValue = $_.Name
+                    NextValues    = ($ADProperties.($_.Name) -join (', '))
+                    Group         = "Active Directory"
+                    Caption       = ($ADProperties.($_.Name) -join ("`n"))
+                }
+            }
+        } catch {
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+        }
+    }
+    end {
+        $LstView
+    }
+}
+function Update-MantisUserProp {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items,
+        $Target = $null # Global:ControlHandler['LVUserADProp']
+    )
+    begin {
+        $LstView = @()
+        $ADFirst = @('DisplayName','Type','Tel_interne','Phone','Title','Ville','CodePostal')
+        $ADEnd = @('Sid','Status','Prenom','Nom','Name','State','Password','Description','PasswordDate','SiteGeo','Service','Bureau','OU','Path','DistinguishedName','CreateDate','Expire','LastLogonDate')
+    }
+    process {
+        try {
+            $ADProperties = Get-ADUser ($Items.NtAccountName.split('\')[1]) -Properties * -Server $Items.domain | Convert-AdUsers
+            $ADProperties.Keys | Where-Object {
+                $ADFirst -contains $_
+            } | ForEach-Object {
+                [PSCustomObject]@{
+                    FirstColValue = $_
+                    NextValues    = $ADProperties.$_ -join (', ')
+                    Group         = "Active Directory"
+                    caption       = $ADProperties.$_ -join ("`n")
+                }
+            }
+        } catch {
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+        }
+
+        if ($Items.NtAccountName -match '\w.+\\\w.+') { # -and $Global:ControlHandler['UserNameGbx'].Text -ne $Items.NtAccountName
+            $MailBox = Get-MailInfos $Items.NtAccountName
+            if ($MailBox.PrimaryAdress) {
+                try {
+                    $GrpMBox = 'MailBox' # "MailBox $($Mailbox.Alias) on $($Mailbox.DomainName)"
+                    $GrpProvider = "Mail provided by $($MailBox.provider.type)"
+                    # Start-Process powershell.exe -ArgumentList "-noexit [void](Import-PSSession (Get-RmExchSession $ad) -wa 0); cls; Get-Mailbox -ResultSize 10 -wa 0; Write-Host -back darkgreen 'Vous disposez maintenant de commande Exchange sur $ad!'"
+                    [PSCustomObject]@{
+                        FirstColValue = 'Email'
+                        NextValues    = $Mailbox.PrimaryAdress, $Mailbox.OthersAdresses
+                        Group         = $GrpMBox
+                        Caption       = "Send and Receive with it"
+                    }
+                    if ($Mailbox.OthersAdresses) {
+                        [PSCustomObject]@{
+                            FirstColValue = 'Other Emails'
+                            NextValues    = "$($Mailbox.OthersAdresses -join(", "))"
+                            Group         = $GrpMBox
+                            Caption       = "just Receive with it :`n$($Mailbox.OthersAdresses -join("`n  "))"
+                            Shadow        = $true
+                        }
+                    }
+                    [PSCustomObject]@{
+                        FirstColValue = 'Domain'
+                        NextValues    = $Mailbox.DomainName
+                        Tag           = "https://mxtoolbox.com/domain/$($Mailbox.DomainName)/"
+                        Group         = $GrpProvider
+                        Caption       = "Alias :`n$($Mailbox.Alias)"
+                    }
+                    [PSCustomObject]@{
+                        FirstColValue = 'AdressBook'
+                        NextValues    = $ADProperties.AddressBookMembers | % {(($_ -split (','))[0] -split ('='))[-1]}
+                        Tag           = $ADProperties.AddressBookMembers
+                        Group         = $GrpProvider
+                        Caption       = ($ADProperties.AddressBookMembers | % {(($_ -split (','))[0] -split ('='))[-1]}) -join("`n")
+                    }
+                    
+
+                    [PSCustomObject]@{
+                        FirstColValue = "Server"
+                        NextValues    = $Mailbox.Provider.DNS
+                        Tag           = "https://$($Mailbox.Provider.DNS)/ecp/"
+                        Group         = $GrpProvider
+                        Caption       = "DblClick pour se connecter en admin"
+                    }
+                    [PSCustomObject]@{
+                        FirstColValue = "Autodiscover"
+                        NextValues    = "$($Mailbox.Provider.DNS)"
+                        Tag           = "https://mxtoolbox.com/SuperTool.aspx?action=blacklist%3a$($Mailbox.DomainName)&run=toolpage"
+                        Group         = $GrpProvider
+                        Caption       = "DblClick pour Check Blacklist"
+                        Status        = $(if ($Mailbox.Provider.DNS -notmatch '^_autodiscover\._tcp') { 'Warning' })
+                    }
+                    [PSCustomObject]@{
+                        FirstColValue = "MX"
+                        NextValues    = "$($Mailbox.Provider.MX -join(", "))"
+                        Tag           = "https://mxtoolbox.com/SuperTool.aspx?action=mx%3a$($Mailbox.DomainName)&run=toolpage"
+                        Group         = $GrpProvider
+                        Caption       = "DblClick pour les details des MX"
+                        Status        = $(if ($Mailbox.Provider.MX -notlike 'mx?.coaxis.com') { 'Warning' })
+                    }
+                    # [PSCustomObject]@{
+                    #     FirstColValue    = "Registrar"
+                    #     NextValues  = "$($Mailbox.Provider.Registrar -join(", "))"
+                    #     Tag = "https://mxtoolbox.com/domain/$($Mailbox.DomainName)/"
+                    #     Group   = $GrpProvider
+                    #     Caption = "DblClick pour le Test Domain Report"
+                    #     # Status  = $(if($Mailbox.Provider.MX -notlike 'mx?.coaxis.com'){'Warning'})
+                    # }
+                    [PSCustomObject]@{
+                        FirstColValue = "Bal [$([math]::round($Mailbox.Bal.Total / 1Gb)) Go]"
+                        NextValues    = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Bal.Percent/100))"
+                        Group         = $GrpMBox
+                        Caption       = "Database : $($Mailbox.Bal.DataBase)`nEspace Alloue : $([math]::round($Mailbox.Bal.Total / 1Gb)) Go`nUtilise [$([math]::round($Mailbox.Bal.Percent))%] : $([math]::round($Mailbox.Bal.Used / 1Gb,2)) Go"
+                        Status        = $(if ($Mailbox.Bal.Percent -gt 90) { 'Warning' })
+                        Shadow        = $(if (!$Mailbox.Bal.Total) { $true })
+                    }
+                    [PSCustomObject]@{
+                        FirstColValue = "Attachment [$([math]::round($Mailbox.Bal.AttachmentSize / 1Gb)) Go]"
+                        NextValues    = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Bal.AttachmentSize/$Mailbox.Bal.Total))"
+                        Group         = $GrpMBox
+                        Caption       = "Utilise [$([math]::round(($Mailbox.Bal.AttachmentSize/$Mailbox.Bal.Total)*100),1)%] : $([math]::round($Mailbox.Bal.AttachmentSize / 1Gb,2)) Go"
+                        Status        = $(if (($Mailbox.Bal.Trash.Size / $Mailbox.Bal.Total) -gt 0.2) { 'Warning' })
+                        Shadow        = $(if (!$Mailbox.Bal.Total) { $true })
+                    }
+                    [PSCustomObject]@{
+                        FirstColValue = "Trash [$([math]::round($Mailbox.Bal.Trash.Size / 1Gb)) Go]"
+                        NextValues    = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Bal.Trash.Size/$Mailbox.Bal.Total))"
+                        Group         = $GrpMBox
+                        Caption       = "$($Mailbox.Bal.Trash.Count) elements dans la corbeille"
+                        Status        = $(if (($Mailbox.Bal.Trash.Size / $Mailbox.Bal.Total) -gt 0.1) { 'Warning' })
+                        Shadow        = $(if (!$Mailbox.Bal.Total) { $true })
+                    }
+                    if ($Mailbox.Archives) {
+                        [PSCustomObject]@{
+                            FirstColValue = "Archive [$([math]::round($Mailbox.Archives.Total / 1Gb)) Go]"
+                            NextValues    = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Archives.Percent/100))"
+                            Group         = $GrpMBox
+                            Caption       = "Database : $($Mailbox.Archives.DataBase)`Policy : $($Mailbox.Archives.Policy) jours`nEspace Alloue : $([math]::round($Mailbox.Archives.Total / 1Gb)) Go`nUtilise [$([math]::round($Mailbox.Archives.Percent))%] : $([math]::round($Mailbox.Archives.Used / 1Gb,2)) Go"
+                            Status        = $(if ($Mailbox.Archives.Percent -gt 90) { 'Warning' })
+                            Shadow        = $(if (!$Mailbox.Archives.Total) { $true })
+                        }
+                    } else {
+                        [PSCustomObject]@{
+                            FirstColValue = "Archive [0 Go]"
+                            NextValues    = "$(Convert-ToProgressBarre -block 'l' -length 53 0)"
+                            Group         = $GrpMBox
+                            Caption       = "Aucune strategie d'archives Exchange!"
+                            Tag           = 'https://docs.microsoft.com/fr-fr/exchange/security-and-compliance/modify-archive-policies'
+                            Shadow        = $true
+                        }
+                    }
+                    if ($Mailbox.Devices) {
+                        foreach ($device in $Mailbox.Devices) {
+                            [PSCustomObject]@{
+                                FirstColValue = $device.name
+                                NextValues    = $device.lastSync
+                                Group         = "$GrpMBox Devices"
+                                Shadow        = $(if ($device.lastSync -lt (get-date).AddDays(-15)) { $true })
+                            }
+                        }
+                    }
+                } catch {
+                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Calller%" '', $_ error
+                }
+            }
+        }
+
+        try {
+            $ADProperties.Keys | Where-Object {
+                $ADEnd -contains $_
+            } | ForEach-Object {
+                [PSCustomObject]@{
+                    FirstColValue = $_
+                    NextValues    = $ADProperties.$_ -join (', ')
+                    Group         = "Other Properties"
+                    caption       = $ADProperties.$_ -join ("`n")
+                }
+            }
+        } catch {
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+        }
+    }
+    end {
+        $LstView
+    }
 }
 function Update-MantisSrv {
     [CmdletBinding()]
@@ -248,161 +493,6 @@ function Update-MantisGrp {
         }
     }
 }
-function Update-MantisUserProp {
-    [CmdletBinding()]
-    param (
-        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items,
-        $Target = $Global:ControlHandler['LVUserADProp']
-    )
-    begin {
-        try {
-            $Global:ControlHandler["ProgressBar_$($Target.name)"].Visible = $true
-        } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
-        }
-        $LstView = @()
-        $Target.BeginUpdate()
-        $Target.Items.Clear()
-    }
-    process {
-        $ADProperties = Get-ADUser ($Items.NtAccountName.split('\')[1]) -Properties * -Server $Items.domain | Convert-AdUsers
-        $ADProperties.Keys | ForEach-Object {
-            $LstView += [PSCustomObject]@{
-                FirstColValue    = $_
-                NextValues  = $ADProperties.$_ -join(', ')
-                Group   = "Active Directory"
-                caption = $ADProperties.$_ -join("`n")
-            }
-        }
-
-        if ($Items.NtAccountName -match '\w.+\\\w.+') { # -and $Global:ControlHandler['UserNameGbx'].Text -ne $Items.NtAccountName
-            $MailBox = Get-MailInfos $Items.NtAccountName
-            if ($MailBox.PrimaryAdress) {
-                try {
-                    $GrpMBox = "MailBox $($Mailbox.Alias) on $($Mailbox.DomainName)"
-                    $GrpProvider = "Mail provided by $($MailBox.provider.type)"
-                    # Start-Process powershell.exe -ArgumentList "-noexit [void](Import-PSSession (Get-RmExchSession $ad) -wa 0); cls; Get-Mailbox -ResultSize 10 -wa 0; Write-Host -back darkgreen 'Vous disposez maintenant de commande Exchange sur $ad!'"
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = 'Email'
-                        NextValues  = $Mailbox.PrimaryAdress, $Mailbox.OthersAdresses
-                        Group   = $GrpMBox
-                        Caption = "Send and Receive with it"
-                    }
-                    if ($Mailbox.OthersAdresses) {
-                        $LstView += [PSCustomObject]@{
-                            FirstColValue    = 'Other Emails'
-                            NextValues  = "$($Mailbox.OthersAdresses -join(", "))"
-                            Group   = $GrpMBox
-                            Caption = "just Receive with it :`n$($Mailbox.OthersAdresses -join("`n  "))"
-                            Shadow = $true
-                        }
-                    }
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = 'Domain'
-                        NextValues  = $Mailbox.DomainName
-                        Tag = "https://mxtoolbox.com/domain/$($Mailbox.DomainName)/"
-                        Group   = $GrpProvider
-                        Caption = "Alias :`n$($Mailbox.Alias)"
-                    }
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = "Server"
-                        NextValues  = $Mailbox.Provider.DNS
-                        Tag = "https://$($Mailbox.Provider.DNS)/ecp/"
-                        Group   = $GrpProvider
-                        Caption = "DblClick pour se connecter en admin"
-                    }
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = "Autodiscover"
-                        NextValues  = "$($Mailbox.Provider.DNS)"
-                        Tag = "https://mxtoolbox.com/SuperTool.aspx?action=blacklist%3a$($Mailbox.DomainName)&run=toolpage"
-                        Group   = $GrpProvider
-                        Caption = "DblClick pour Check Blacklist"
-                        Status  = $(if ($Mailbox.Provider.DNS -notmatch '^_autodiscover\._tcp') { 'Warning' })
-                    }
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = "MX"
-                        NextValues  = "$($Mailbox.Provider.MX -join(", "))"
-                        Tag = "https://mxtoolbox.com/SuperTool.aspx?action=mx%3a$($Mailbox.DomainName)&run=toolpage"
-                        Group   = $GrpProvider
-                        Caption = "DblClick pour les details des MX"
-                        Status  = $(if ($Mailbox.Provider.MX -notlike 'mx?.coaxis.com') { 'Warning' })
-                    }
-                    # $LstView += [PSCustomObject]@{
-                    #     FirstColValue    = "Registrar"
-                    #     NextValues  = "$($Mailbox.Provider.Registrar -join(", "))"
-                    #     Tag = "https://mxtoolbox.com/domain/$($Mailbox.DomainName)/"
-                    #     Group   = $GrpProvider
-                    #     Caption = "DblClick pour le Test Domain Report"
-                    #     # Status  = $(if($Mailbox.Provider.MX -notlike 'mx?.coaxis.com'){'Warning'})
-                    # }
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = "Bal [$([math]::round($Mailbox.Bal.Total / 1Gb)) Go]"
-                        NextValues  = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Bal.Percent/100))"
-                        Group   = $GrpMBox
-                        Caption = "Database : $($Mailbox.Bal.DataBase)`nEspace Alloue : $([math]::round($Mailbox.Bal.Total / 1Gb)) Go`nUtilise [$([math]::round($Mailbox.Bal.Percent))%] : $([math]::round($Mailbox.Bal.Used / 1Gb,2)) Go"
-                        Status  = $(if ($Mailbox.Bal.Percent -gt 90) { 'Warning' })
-                        Shadow  = $(if (!$Mailbox.Bal.Total) { $true })
-                    }
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = "Attachment [$([math]::round($Mailbox.Bal.AttachmentSize / 1Gb)) Go]"
-                        NextValues  = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Bal.AttachmentSize/$Mailbox.Bal.Total))"
-                        Group   = $GrpMBox
-                        Caption = "Utilise [$([math]::round(($Mailbox.Bal.AttachmentSize/$Mailbox.Bal.Total)*100),1)%] : $([math]::round($Mailbox.Bal.AttachmentSize / 1Gb,2)) Go"
-                        Status  = $(if (($Mailbox.Bal.Trash.Size/$Mailbox.Bal.Total) -gt 0.2) { 'Warning' })
-                        Shadow  = $(if (!$Mailbox.Bal.Total) { $true })
-                    }
-                    $LstView += [PSCustomObject]@{
-                        FirstColValue    = "Trash [$([math]::round($Mailbox.Bal.Trash.Size / 1Gb)) Go]"
-                        NextValues  = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Bal.Trash.Size/$Mailbox.Bal.Total))"
-                        Group   = $GrpMBox
-                        Caption = "$($Mailbox.Bal.Trash.Count) elements dans la corbeille"
-                        Status  = $(if (($Mailbox.Bal.Trash.Size/$Mailbox.Bal.Total) -gt 0.1) { 'Warning' })
-                        Shadow  = $(if (!$Mailbox.Bal.Total) { $true })
-                    }
-                    if ($Mailbox.Archives) {
-                        $LstView += [PSCustomObject]@{
-                            FirstColValue    = "Archive [$([math]::round($Mailbox.Archives.Total / 1Gb)) Go]"
-                            NextValues  = "$(Convert-ToProgressBarre -block 'l' -length 53 ($Mailbox.Archives.Percent/100))"
-                            Group   = $GrpMBox
-                            Caption = "Database : $($Mailbox.Archives.DataBase)`Policy : $($Mailbox.Archives.Policy) jours`nEspace Alloue : $([math]::round($Mailbox.Archives.Total / 1Gb)) Go`nUtilise [$([math]::round($Mailbox.Archives.Percent))%] : $([math]::round($Mailbox.Archives.Used / 1Gb,2)) Go"
-                            Status  = $(if ($Mailbox.Archives.Percent -gt 90) { 'Warning' })
-                            Shadow  = $(if (!$Mailbox.Archives.Total) { $true })
-                        }
-                    } else {
-                        $LstView += [PSCustomObject]@{
-                            FirstColValue    = "Archive [0 Go]"
-                            NextValues  = "$(Convert-ToProgressBarre -block 'l' -length 53 0)"
-                            Group   = $GrpMBox
-                            Caption = "Aucune strategie d'archives Exchange!"
-                            Tag = 'https://docs.microsoft.com/fr-fr/exchange/security-and-compliance/modify-archive-policies'
-                            Shadow  = $true
-                        }
-                    }
-                    if ($Mailbox.Devices) {
-                        foreach ($device in $Mailbox.Devices) {
-                            $LstView += [PSCustomObject]@{
-                                FirstColValue    = $device.name
-                                NextValues  = $device.lastSync
-                                Group   = "$GrpMBox Devices"
-                                Shadow  = $(if ($device.lastSync -lt (get-date).AddDays(-15)) { $true })
-                            }
-                        }
-                    }
-                } catch {
-                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Calller%" '', $_ error
-                }
-            }
-        }
-    }
-    end {
-        $LstView | Update-ListView -listView $Target
-        $Target.EndUpdate()
-        $Target.Enabled = $true
-        try {
-            $Global:ControlHandler["ProgressBar_$($Target.name)"].Visible = $false
-        } catch {}
-    }
-}
 function Update-MantisUsers {
     [CmdletBinding()]
     param (
@@ -418,7 +508,7 @@ function Update-MantisUsers {
     process {
         foreach ($item in $Items) {
             try {
-                $lastAdded = $Target.rows.Add(@($item.SamAccountName, $item.DisplayName, $item.email, $item.Type, $item.Status, $item.Phone, $item.Description, $item.OU, $item.Sid, $item.PasswordType, $item.CreateDate, $item.LastLogonDate, $item.Expire, ($item.Groupes -join ("`n"))))
+                $lastAdded = $Target.rows.Add(@($item.NtAccountName, $item.DisplayName, $item.email, $item.Type, $item.Status, $item.Phone, $item.Description, $item.OU, $item.Sid, $item.PasswordType, $item.CreateDate, $item.LastLogonDate, $item.Expire, ($item.Groupes -join ("`n"))))
                 # $lastAdded.Tag = $item.DistinguishedName # Tag n'existe pas dans Row
                 $lastRow = $Target.rows[$lastAdded]
                 
@@ -595,6 +685,28 @@ function Convert-DGV_RDS_Row {
     end {
         
     }
+}
+function Convert-DGV_AD_Row {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipeline = $true)]$Rows = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows 
+    )
+    
+    begin {}
+    process {
+        foreach ($Row in $Rows) {
+            # Write-Object $Row.cells
+            [pscustomobject][ordered]@{
+                Domain        = $mantis.SelectedDomain.name
+                NtAccountName = $($Row.cells[0].value)
+                email     = $($Row.cells[2].value)
+                OU     = $($Row.cells[7].value)
+                Sid     = $($Row.cells[8].value)
+                handler       = $(if ($handler) { $Row }else { $null }) # la ligne dans le DataGridView
+            }
+        }
+    }
+    end {}
 }
 function Start-ActionByRow {
     [CmdletBinding()]

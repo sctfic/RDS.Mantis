@@ -29,7 +29,6 @@ class Sequence {
 class UsersCollector {
     hidden $Domain = $null
     hidden $Job = $null
-    hidden $LastResultDateTime = $null
     $Items = $null
 
     UsersCollector ($Domain){
@@ -42,11 +41,11 @@ class UsersCollector {
         $this.Items = $null
         $this.Job | Remove-Job -Force -ea SilentlyContinue
         $this.Job = $null
-        $this.LastResultDateTime = $null
     }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
-            if(!$this.Job){
+            if(!$this.Job -or $this.Job.PSBeginTime -lt (Get-Date).AddSeconds(-60)){
+                $this.Reset()
                 # $this.Job = $true
                 #    -StreamingHost $Global:host `
                 $this.Job = Start-ThreadJob `
@@ -54,7 +53,6 @@ class UsersCollector {
                     -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite;Import-Module RDS.Mantis -Function Convert-AdUsers} `
                     -ScriptBlock {
                         param($Domain)
-                        
                         Write-LogStep 'Collector Get-ADUser',$Domain -mode wait
                         Get-ADUser `
                             -Properties * `
@@ -63,7 +61,6 @@ class UsersCollector {
                     } -ArgumentList $this.Domain
             } else {
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-                $this.LastResultDateTime = Get-Date
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
@@ -74,7 +71,6 @@ class UsersCollector {
 class GroupsCollector {
     hidden $Domain = $null
     hidden $Job = $null
-    hidden $LastResultDateTime = $null
     $Items = $null
 
     GroupsCollector ($Domain){
@@ -87,19 +83,21 @@ class GroupsCollector {
         $this.Items = $null
         $this.Job | Remove-Job -Force -ea SilentlyContinue
         $this.Job = $null
-        $this.LastResultDateTime = $null
     }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
-            if(!$this.Job){
+            if(!$this.Job -or $this.Job.PSBeginTime -lt (Get-Date).AddSeconds(-10)){
+                $this.Reset()
                 # $this.Job = $true
                 #    -StreamingHost $Global:host `
                 $this.Job = Start-ThreadJob `
                     -Name "Mantis_Grp_$($this.Domain)" `
-                    -InitializationScript {$PSModuleAutoloadingPreference=1;Import-Module ActiveDirectory,PsWrite} `
+                    -InitializationScript {
+                        $PSModuleAutoloadingPreference=1
+                        Import-Module ActiveDirectory,PsWrite
+                    } `
                     -ScriptBlock {
                         param($Domain)
-                        
                         Write-LogStep 'Collector Get-ADGroup',$Domain -mode wait
                         Get-ADGroup `
                             -Properties Description,member,MemberOf,Members `
@@ -108,7 +106,6 @@ class GroupsCollector {
                     } -ArgumentList $this.Domain
             } else {
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-                $this.LastResultDateTime = Get-Date
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
@@ -119,7 +116,6 @@ class GroupsCollector {
 class TrashCollector {
     hidden $Domain = $null
     hidden $Job = $null
-    hidden $LastResultDateTime = $null
     $Items = $null
 
     TrashCollector ($Domain){
@@ -132,11 +128,11 @@ class TrashCollector {
         $this.Items = $null
         $this.Job | Remove-Job -Force -ea SilentlyContinue
         $this.Job = $null
-        $this.LastResultDateTime = $null
     }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
-            if(!$this.Job){
+            if(!$this.Job -or $this.Job.PSBeginTime -lt (Get-Date).AddSeconds(-15)){
+                $this.Reset()
                 # $this.Job = $true
                 #    -StreamingHost $Global:host `
                 $this.Job = Start-ThreadJob `
@@ -153,7 +149,6 @@ class TrashCollector {
                     } -ArgumentList $this.Domain
             } else {
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-                $this.LastResultDateTime = Get-Date
                 # Write-Host $this.Items -ForegroundColor DarkYellow
             }
         }
@@ -164,7 +159,6 @@ class TrashCollector {
 class DFSCollector {
     hidden $Domain = $null
     hidden $Job = $null
-    hidden $LastResultDateTime = $null
     $Root = $null
     $Items = $null
 
@@ -180,7 +174,6 @@ class DFSCollector {
         $this.Items = $null
         $this.Job | Remove-Job -Force -ea SilentlyContinue
         $this.Job = $null
-        $this.LastResultDateTime = $null
     }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
@@ -190,7 +183,8 @@ class DFSCollector {
                     Path = "$($this.Root)\$_"
                 }
             }
-            # if(!$this.Job){
+            # if(!$this.Job -or $this.Job.PSBeginTime -lt (Get-Date).AddSeconds(-10)){
+                $this.Reset()
             #     $this.Job = $true
             #    -StreamingHost $Global:host `
             #     $this.Job = Start-ThreadJob `
@@ -208,7 +202,6 @@ class DFSCollector {
             # } else {
             #     Write-Host 'Wait !!!' -fore DarkYellow
             #     $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-            $this.LastResultDateTime = Get-Date
             #     Write-Host 'Wait ok !' -fore DarkGreen
             # }
         }
@@ -219,7 +212,6 @@ class DFSCollector {
 class ServersCollector {
     hidden $Domain = $null
     hidden $Job = $null
-    hidden $LastResultDateTime = $null
     $Items = $null
 
     ServersCollector ($Domain){
@@ -232,14 +224,14 @@ class ServersCollector {
         $this.Items = $null
         $this.Job | Remove-Job -Force -ea SilentlyContinue
         $this.Job = $null
-        $this.LastResultDateTime = $null
     }
     [PSCustomObject[]] Get () {
         if (!$this.Items) {
-            if(!$this.Job){ # on first call, just start thread
+            if(!$this.Job -or $this.Job.PSBeginTime -lt (Get-Date).AddSeconds(-10)){
+                $this.Reset() # on first call, just start thread
                 Write-Host "Create Job","Mantis_Servers_$($this.Domain)" -ForegroundColor DarkBlue
+                # -StreamingHost $Global:host `
                 $this.Job = Start-ThreadJob `
-                    -StreamingHost $Global:host `
                     -Name "Mantis_Srv_$($this.Domain)" `
                     -InitializationScript {$PSModuleAutoloadingPreference=1} `
                     -ScriptBlock {
@@ -304,9 +296,7 @@ class ServersCollector {
             } else { # on se$true
                 # on next call, wait and read started thread
                 $this.Items = $this.Job | Receive-Job -Wait -AutoRemoveJob
-                $this.LastResultDateTime = Get-Date
                 $this.Job = $null
-                $this.LastResultDateTime = $null
                 $this.GetRDSessions()
             }
         }
@@ -346,7 +336,6 @@ class ServersCollector {
                 $this.Job | Receive-Job -Wait -AutoRemoveJob
                 # $this.Job | Write-Object -PassThru
                 $this.Job = $null
-                $this.LastResultDateTime = $null
                 return $this.Items.Sessions
             }
         }
@@ -356,8 +345,8 @@ class ServersCollector {
 
 
 class Mantis {
-    $CurrentDomain = $null
-    $SelectedDomain = $null
+    $CurrentDomain = $null # current computer domain
+    $SelectedDomain = $null # GUI selected domain
     $TrustedDomain = $null
 
     Mantis () {
