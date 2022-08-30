@@ -342,7 +342,7 @@
                                                             $_.handler.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DimGray
                                                             $_.handler.cells[4].Value = 'Disabled'
                                                         } catch {
-                                                            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                                            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                                                         }
                                                     }
                                                 }
@@ -363,7 +363,7 @@
                                                             $_.Sid | Remove-ADUser -Confirm:$false -server $_.domain
                                                             $Global:ControlHandler['DataGridView_ADAccounts'].Rows.Remove($_.handler)
                                                         } catch {
-                                                            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                                            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                                                         }
                                                     }
                                                 }
@@ -534,7 +534,7 @@
                                                         $cred = (get-CredentialByRegistry -ntAccountName (whoami.exe))
                                                         Open-RdSession -ComputerName $this.SelectedItems.text -Credential $cred| Out-Null
                                                     } catch {
-                                                        Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                                        Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                                                     }
                                                 }
                                                 ItemSelectionChanged  = [Scriptblock]{ # Event

@@ -6,7 +6,7 @@ function Invoke-MantisConstructor {
             $items = @()
             $Global:mantis = New-Mantis
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
         }
         $ChildrenScriptBlock = {
             param($parent)
@@ -43,7 +43,7 @@ function Invoke-MantisConstructor {
             # $mantis.Domain('pep64.org').Servers.get()
             
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
         }
     }
     end {

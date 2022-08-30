@@ -67,20 +67,20 @@ function Start-WatchTimer {
                                     # $Target.BeginUpdate()
                                     # $Target.Items.Clear()
                                 } catch {
-                                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                                 }
                                 Receive-Job $thread.Name -Wait -AutoRemoveJob | Update-ListView -listView $Target
                                 try {
                                     # $Target.Enabled = $true
                                     $Global:ControlHandler["ProgressBar_$TargetName"].Visible = $false
                                 } catch {
-                                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                                 }
                             }
                         }
                         Write-Host $thread.Name -ForegroundColor DarkGreen
                     } catch {
-                        Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                        Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                     }
                 }
             } elseif(!(Get-Job | ?{$_.Name -like 'Mantis_*'})) {
@@ -103,7 +103,7 @@ function Start-WatchTimer {
                         }
                         Start-Loading $WinControl $thread
                     } catch {
-                        Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                        Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                     }
                 }
             }
@@ -168,7 +168,7 @@ function Start-Loading {
         $Global:ControlHandler["ProgressBar_$WinControl"].Visible = $true
         # $thread | Select-Object Name,Id,State | Write-Object -fore DarkMagenta
     } catch {
-        # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+        # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
     }
 }
 function Start-Job4RightProperties {
@@ -275,7 +275,7 @@ function Update-MantisUserGroups {
                 }
             }
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
         }
     }
     end {
@@ -303,7 +303,7 @@ function Update-MantisServerProp {
                 }
             }
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
         }
     }
     end {
@@ -336,7 +336,7 @@ function Update-MantisUserProp {
                 }
             }
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
         }
 
         if ($Items.NtAccountName -match '\w.+\\\w.+') { # -and $Global:ControlHandler['UserNameGbx'].Text -ne $Items.NtAccountName
@@ -479,7 +479,7 @@ function Update-MantisUserProp {
                 }
             }
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
         }
     }
     end {
@@ -537,7 +537,7 @@ function Update-MantisSrv {
             $Global:ControlHandler["ProgressBar_$($Target.name)"].Visible = $false
             # Write-Host "ProgressBar_$($Target.name)" -ForegroundColor DarkGreen
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
         }
     }
 }
@@ -578,7 +578,7 @@ function Update-MantisTrash {
             $Global:ControlHandler["ProgressBar_$($Target.name)"].Visible = $false
             # Write-Host "ProgressBar_$($Target.name)" -ForegroundColor DarkGreen
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
         }
     }
 }
@@ -613,7 +613,7 @@ function Update-MantisGrp {
             # Write-Host "ProgressBar_$($Target.name)" -ForegroundColor DarkGreen
 
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
         }
     }
 }
@@ -651,7 +651,7 @@ function Update-MantisUsers {
                     $lastRow.DefaultCellStyle.BackColor = [system.Drawing.Color]::Tomato
                 }
             } catch {
-                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
             }
         }
     }
@@ -663,7 +663,7 @@ function Update-MantisUsers {
             Write-Host "ProgressBar_$($Target.name)" -ForegroundColor DarkGreen
 
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
         }
     }
 }
@@ -698,7 +698,7 @@ function Update-MantisSessions {
                     $lastRow.DefaultCellStyle.ForeColor = [system.Drawing.Color]::CornflowerBlue
                 }
             } catch {
-                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
             }
         }
     }
@@ -710,7 +710,7 @@ function Update-MantisSessions {
             # Write-Host "ProgressBar_$($Target.name)" -ForegroundColor DarkGreen
 
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
         }
     }
 }
@@ -765,7 +765,7 @@ function Update-MantisDFS {
                 } # -Expand <!> declenche l'event d'expand
             }
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
         }
 
     }
@@ -777,7 +777,7 @@ function Update-MantisDFS {
             Write-Host "ProgressBar_$($Target.name)" -ForegroundColor DarkGreen
 
         } catch {
-            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "Missing ProgressBar","ProgressBar_$($Target.name)"  error
         }
     }
 }

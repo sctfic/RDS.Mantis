@@ -93,7 +93,7 @@ function Convert-AdUsers {
                 }
                 $Prop
             } catch {
-                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" '',$_ error
+                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" '',$_ error
             }
         }
     }

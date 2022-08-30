@@ -242,17 +242,26 @@ class ServersCollector {
                         ActiveDirectory\Get-ADComputer -Filter {operatingSystem -Like '*Windows Server*'} `
                             -Properties OperatingSystem,operatingSystem,WhenCreated,whenCreated `
                             -Server $Domain | ForEach-Object -Parallel {
+                                function Write-LogStep {}
                                 # Import-Module PsWrite
                                 Import-Module PsBright -SkipEditionCheck -DisableNameChecking # -Function Test-TcpPort,Get-Registry,Get-RegBase
-                            # function Write-LogStep { }
-                            # 'DNSHostName',$_.DNSHostName | Write-Object -PassThru
                             $DNSHostName = $_.DNSHostName
                             $IP = $null
                             try {
                                 $IP = [string][System.Net.Dns]::GetHostAddresses($DNSHostName).IPAddressToString -Split(' ') | Sort-Object -Unique
-                                if ($IP -and (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server").Type -eq 'Container' -and (Test-TcpPort $_.DNSHostName -Quick -ConfirmIfDown)) {
+                            } catch {
+                                Write-LogStep "", $_ error
+                                Write-Error -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "Impossible de determiner l'adresse IP de [$DNSHostName]"
+                            }
+                            if ($IP -and (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server").Type -eq 'Container' -and (Test-TcpPort $_.DNSHostName -Quick -ConfirmIfDown)) {
+                                try {
                                     $OperatingSystem = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\ProductName").value
                                     $CurrentBuild = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\CurrentBuild").value
+                                } catch {
+                                    Write-Error $_
+                                    # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", "Impossible de determiner l'adresse IP de [$DNSHostName]" error
+                                }
+                                try {
                                     $ProductVersion = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\ProductVersion").value
                                     $fDenyTSConnections = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\fDenyTSConnections").value
                                     $TSUserEnabled = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\TSUserEnabled").value
@@ -261,19 +270,17 @@ class ServersCollector {
                                         $MemberOfFarm = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryClusterName").value
                                         $ServerBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SYSTEM\ControlSet001\Control\Terminal Server\ClusterSettings\SessionDirectoryLocation").value
                                     # }
+                                } catch {
+                                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
                                 }
-                            } catch {
-                                Write-Error $_
-                                Write-Error "Impossible de determiner l'adresse IP de [$DNSHostName]"
-                                # Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", "Impossible de determiner l'adresse IP de [$DNSHostName]" error
-                            }
+                                }
                             try {
                                 [PSCustomObject]@{
                                     Name = $_.DNSHostName
                                     DN = $_.DistinguishedName
                                     SID = $_.SID.value
-                                    OperatingSystem =  $(if($OperatingSystem){"$OperatingSystem [$CurrentBuild]"}) # $(try{$_.operatingSystem}catch{Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error}) #
-                                    InstallDate = $(try{$_.whenCreated}catch{Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error})
+                                    OperatingSystem =  $(if($OperatingSystem){"$OperatingSystem [$CurrentBuild]"}) # $(try{$_.operatingSystem}catch{Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error}) #
+                                    InstallDate = $(try{$_.whenCreated}catch{Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error})
                                     IP = $IP
                                     isDC = $($_.DistinguishedName -like '*,OU=Domain Controllers,DC=*')
                                     isBroker = (Get-Registry "\\$($_.DNSHostName)\HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Terminal Server\CentralPublishedResources\PublishedFarms\").Value
@@ -288,7 +295,7 @@ class ServersCollector {
                                     Sessions = $null # $_.DNSHostName | Get-RdSession | Convert-RdSession
                                 }
                             } catch {
-                                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Caller%" "", $_ error
                             }
                         } -ThrottleLimit 12
                     } `
