@@ -382,7 +382,7 @@
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
                                                     $modele = $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows[-1] | Convert-DGV_AD_Row
-                                                    $DuplicateScript = (Get-Childitem -Path ([Environment]::GetFolderPath("MyDocuments")) -Include Duplicate-User_GUI.ps1 -Recurse | Sort-Object LastWriteTime -Descending)[0].FullName
+                                                    $DuplicateScript = (Microsoft.PowerShell.Management\Get-ChildItem -Path ([Environment]::GetFolderPath("MyDocuments")) -Include Duplicate-User_GUI.ps1 -Recurse | Sort-Object LastWriteTime -Descending)[0].FullName
                                                     & $DuplicateScript -user_model $modele.NtAccountName
 
                                                 }
@@ -695,9 +695,8 @@
                                                 AfterExpand    = [Scriptblock]{ # Event
                                                     $item = $_
                                                     Invoke-EventTracer $this "'BeforeExpand' $($item.Node.Text)"
-                                                    # $item.Node.FirstNode | Write-Object -PassThru
                                                     if ($item.Node.FirstNode.Tag -eq '-') {
-                                                        $item.Node.fullPath | get-childitem -Directory -Force -ea 0 | ForEach-Object {
+                                                        $item.Node.fullPath | Microsoft.PowerShell.Management\Get-ChildItem -Directory -Force -ea 0 | ForEach-Object {
                                                             [PSCustomObject]@{
                                                                 Name = $_.Name
                                                                 Handler = $_.FullName

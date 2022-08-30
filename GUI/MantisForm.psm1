@@ -290,15 +290,29 @@ function Update-MantisServerProp {
     )
     begin {
         $LstView = @()
+        $MainProp = @('Name','DisplayName','Description','DNSHostName','SID','whenCreated','Modified','IPv4Address','IPv6Address','DistinguishedName','MemberOf','OperatingSystem','OperatingSystemVersion')
+
     }
     process {
         try {
             $ADProperties = Get-ADComputer ($Items.ComputerName -replace(".$($Items.domain)")) -Properties * -Server $Items.Domain
-            $ADProperties.PSObject.Properties | ForEach-Object {
+            $ADProperties.PSObject.Properties | Where-Object {
+                $MainProp -contains $_.name
+            } | ForEach-Object {
                 [PSCustomObject]@{
                     FirstColValue = $_.Name
                     NextValues    = ($ADProperties.($_.Name) -join (', '))
-                    Group         = "Active Directory"
+                    Group         = "Major Infos"
+                    Caption       = ($ADProperties.($_.Name) -join ("`n"))
+                }
+            }
+            $ADProperties.PSObject.Properties | Where-Object {
+                $MainProp -notcontains $_.Name
+            } | ForEach-Object {
+                [PSCustomObject]@{
+                    FirstColValue = $_.Name
+                    NextValues    = ($ADProperties.($_.Name) -join (', '))
+                    Group         = "Minor Infos"
                     Caption       = ($ADProperties.($_.Name) -join ("`n"))
                 }
             }
