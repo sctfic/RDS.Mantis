@@ -29,9 +29,9 @@ function Start-WatchTimer {
         $Global:SequenceStart = New-Sequence @(
                 {$Mantis.SelectedDomain.Servers.Get()},
                 # {$Mantis.SelectedDomain.DFS.Get()},
-                {$Mantis.SelectedDomain.Users.Get()},
                 {$Mantis.SelectedDomain.Groups.Get()},
-                {$Mantis.SelectedDomain.Trash.Get()}
+                {$Mantis.SelectedDomain.Trash.Get()},
+                {$Mantis.SelectedDomain.Users.Get()}
             )
     }
     process {
@@ -56,6 +56,9 @@ function Start-WatchTimer {
                             }
                             'Mantis_Trash_.+' {
                                 $Mantis.SelectedDomain.Trash.Get() | Update-MantisTrash
+                            }
+                            'Mantis_AskAQuestionToUser_.+' {
+                                Receive-Job $thread.Name -Wait -AutoRemoveJob | Update-LogsOfRequest -target $Global:ControlHandler['RichTextBox_Logs']
                             }
                             default {
                                 $TargetName = ($thread.Name -split('_'))[1]
@@ -110,6 +113,51 @@ function Start-WatchTimer {
     end {
         $MainTimer.Start() | Out-Null
     }
+}
+function Update-LogsOfRequest {
+    param (
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$SessionAnswer,
+        $Target = $Global:ControlHandler['RichTextBox_Logs']
+    )
+    begin{
+    # [PSCustomObject]@{
+    #     Request         = $SessionAnswer.Request
+    #     ComputerName    = $SessionAnswer.Server.ServerName
+    #     UserAccount     = $SessionAnswer.UserAccount
+    #     Answer          = $SessionAnswer.Answer
+    #     ClientName      = $SessionAnswer.ClientName
+    #     ClientIPAddress = $SessionAnswer.ClientIPAddress
+    # }
+    }
+    process {
+        if ("$($SessionAnswer.Answer)" -eq 'no') {
+            $color = 'Red'
+            $Answer = '   NO   '
+        } else {
+            $color = 'Green'
+            $Answer = '  YES   '
+        }
+        $Target.SelectionColor = 'black'
+        $Target.AppendText('[')
+        $Target.SelectionColor = $color
+        $Target.AppendText($Answer)
+        $Target.SelectionColor = 'black'
+        $Target.AppendText("]`t=> Repounce de ")
+        $Target.SelectionColor = 'Blue'
+        $Target.AppendText($SessionAnswer.UserAccount)
+        $Target.SelectionColor = 'Black'
+        $Target.AppendText(' depuis ')
+        $Target.SelectionColor = 'Blue'
+        $Target.AppendText($SessionAnswer.ComputerName)
+        $Target.SelectionColor = 'Gray'
+        $Target.AppendText(' a la Question: ')
+        $Target.SelectionColor = $color
+        $Target.AppendText($SessionAnswer.Request)
+        $Target.SelectionColor = 'DarkGray'
+        $Target.AppendText(" $(get-date)`r`n")
+        $Target.ScrollToCaret()
+    }
+    End {}
 }
 function Start-Loading {
     param (
@@ -742,7 +790,7 @@ function Set-SelectedRDServers {
     }
     $Global:mantis.SelectedDomain.Servers.GetRDSessions($Computers)
 }
-function Stop-DGV_RDSSessions {
+function Stop-RDSSessions {
     [CmdletBinding()]
     param (
         [Parameter(ValueFromPipelineByPropertyName = $true)] $ComputerName = $null,
@@ -779,16 +827,104 @@ function Stop-DGV_RDSSessions {
         }
     }
 }
+function Send-MessageToRDSSessions {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $ComputerName = $null,
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $SessionID = $null,
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $NtAccountName = $null
+    )
+    begin {
+        $abort = $false
+        $Prompt = Input-Box  -Title "Envoyer un popup à l'écran" `
+            -Message 'Rédiger un message:' `
+            -Value "IMPORTANT: Une maintenance va être appliquée sur les serveurs dans 10 minutes.`nMerci d'enregistrer votre travail et de fermer votre session."
+        # -listComboBox @('Info (sans reponse)','AbortRetryIgnore','OK','OKCancel','RetryCancel','YesNo','YesNoCancel')
+        if ($Prompt.OUT -eq 'Cancel') {
+            $abort = $true
+        }
+        $CassiaSession = @()
+    }
+    process {
+        if (!$abort) {
+            if (!$All) {
+                $CassiaSession += $ComputerName | Get-RdComputer | Get-RdSession -Identity $SessionID
+            }
+            else {
+                $Computers += $ComputerName
+            }
+        }
+    }
+    end {
+        if (!$abort) {
+            if ($All) {
+                $CassiaSession = Get-RdSession -ComputerName ($Computers | Sort-Object -Unique)
+            }
+            $footer = "$(whoami), Service SI"
+            $CassiaSession | Send-RdSession -Message $Prompt.Value -Footer $footer
+        }
+    }
+}
+function Request-RDSToSessions {
+    [CmdletBinding()]
+    param (
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $ComputerName = $null,
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $SessionID = $null,
+        [Parameter(ValueFromPipelineByPropertyName = $true)] $NtAccountName = $null
+    )
+    begin {
+        $ObjSessions = @()
+        $list = @()
+        $AskAQuestionToUser = {
+            param($Footer, $Question, $ObjSession)
+            # import-module PSRdSessions
+            # Include Area #
+            $SessionAnswer = Request-RdSession -ComputerName $ObjSession.ComputerName -Identity $ObjSession.Identity -Message $Question -Footer $Footer -TimeOut 120
+            if ($SessionAnswer.answer -eq 'no') {
+                $icon = [System.Windows.Forms.ToolTipIcon]::Error
+                # $ObjSessions.handler | Write-Object -fore red
+            } else {
+                $icon = [System.Windows.Forms.ToolTipIcon]::Info
+                # $ObjSessions.handler | Write-Object -fore red
+            }
+            # pop up windows en bas à droite de l'écran
+            # s'assurer que l'assistant de concentration n'est pas activé sinon la notification n'apparait pas comme escomptée
+            Invoke-BalloonTip -Timeout 300 -Title "Réponse de [$($SessionAnswer.UserAccount)]" -type $icon -Message "$($SessionAnswer.Request)`n[ $($SessionAnswer.answer) ]"
+            [PSCustomObject]@{
+                Request         = $SessionAnswer.Request
+                ComputerName    = $SessionAnswer.Server.ServerName
+                UserAccount     = $SessionAnswer.UserAccount
+                Answer          = $SessionAnswer.Answer
+                ClientName      = $SessionAnswer.ClientName
+                ClientIPAddress = $SessionAnswer.ClientIPAddress
+            }
+        } | Include-ToScriptblock -Functions (Get-Command -Name 'PsBright\Invoke-BalloonTip', 'PSRdSessions\Request-RdSession')
+    }
+    process {
+        # Write-Object $Session -foreGroundColor Red
+        $ObjSessions += [PSCustomObject]@{
+            ComputerName  = $ComputerName
+            Identity      = $SessionID
+            NtAccountName = $NtAccountName
+        }
+    }
+    end {
+        $list = @($ObjSessions | ForEach-Object { $_.NtAccountName }) -join ("`n")
 
+        $input_box = Input-Box -Title "Envoyer une question dichotomique (oui/non) à l'écran" `
+            -Message "Poser une question à ces utilisateurs : `n$list" `
+            -Value "Pouvez-vous svp me confirmer que ce problème est résolu ?"
 
-
-
-
-
-
-
-
-
+        if ($input_box.OUT -ne 'Cancel') {
+            $question = $input_box.value
+            $footer = "$(whoami), Service Informatique"
+            $ObjSessions | ForEach-Object {
+                # c'est cela qui démarre l'action en asynchrone
+                Start-ThreadJob -name "Mantis_AskAQuestionToUser_$($_.Identity)" -ScriptBlock $AskAQuestionToUser -ArgumentList @($footer, $question, $_)
+            }
+        }
+    }
+}
 
 
 

@@ -62,9 +62,9 @@
                 SelectedIndexChanged = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'SelectedIndexChanged'
                     switch ($this.SelectedTab.Name) {
-                        'Tab1' {
+                        'RDSFarm' {
                         }
-                        'Tab2' {
+                        'ADAccounts' {
                         }
                         default {}
                     }
@@ -138,12 +138,12 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
-                                                    $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
-                                                    if ($global:RDS_Selected | Stop-DGV_RDSSessions) {
+                                                    # $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
+                                                    if ($Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Rowd | Stop-RDSSessions) {
                                                         $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | ForEach-Object {
                                                             $Global:ControlHandler['DataGridView_Sessions'].Rows.Remove($_)
                                                         }
-                                                        $Global:Mantis.SelectedDomain.Servers.RefreshRDSessions()
+                                                        # $Global:Mantis.SelectedDomain.Servers.RefreshRDSessions()
                                                     }
                                                 }
                                             }
@@ -160,7 +160,7 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
-                                                    $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
+                                                    $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row | Send-MessageToRDSSessions
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -174,7 +174,7 @@
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
-                                                    $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
+                                                    $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row | Request-RDSToSessions
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -442,6 +442,7 @@
         @{  ControlType = 'Panel'
             Name        = 'PanelLeft'
             Dock        = 'left'
+            Width       = 320
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
@@ -775,7 +776,7 @@
                                                                 Click    = [Scriptblock]{ # Event
                                                                     Invoke-EventTracer $this 'Click'
                                                                     $Global:ControlHandler['ListTrash'].SelectedItems | ForEach-Object {
-                                                                        $_.Tag | Restore-ADObject -PassThru | ForEach-Object { $_ | Set-ADUser -Description "Restaured on $(get-date) by $(whoami.exe) ($_)" }
+                                                                        $_.Tag | Restore-ADObject -PassThru | Set-ADObject -Description "Restaured on $(get-date) by $(whoami.exe) ($_)"
                                                                         $_.remove()
                                                                     }
                                                                 }
@@ -794,7 +795,7 @@
                                                                 Click    = [Scriptblock]{ # Event
                                                                     Invoke-EventTracer $this 'Click'
                                                                     $Global:ControlHandler['ListTrash'].SelectedItems | ForEach-Object {
-                                                                        $_.Tag | Remove-ADObject -IncludeDeletedObjects -Confirm
+                                                                        $_.Tag | Remove-ADObject -IncludeDeletedObjects -Confirm:$False
                                                                         $_.remove()
                                                                     }
                                                                 }
@@ -861,6 +862,7 @@
         @{  ControlType = 'Panel'
             Name        = 'PanelRight'
             Dock        = 'Right'
+            Width       = 320
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
@@ -878,7 +880,7 @@
                     Events      = @{
                         Enter = [Scriptblock]{ # Event
                             Invoke-EventTracer $this 'Enter'
-                            # $Global:ControlHandler['UserNameGbx'].Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.2)
+                            $Global:ControlHandler['UserNameGbx'].Height = [int]($Global:ControlHandler['PanelRight'].Height * 0.2)
                         }
                     }
                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]

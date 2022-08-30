@@ -184,7 +184,7 @@ class DFSCollector {
                 }
             }
             # if(!$this.Job -or $this.Job.PSBeginTime -lt (Get-Date).AddSeconds(-10)){
-                $this.Reset()
+            #     $this.Reset()
             #     $this.Job = $true
             #    -StreamingHost $Global:host `
             #     $this.Job = Start-ThreadJob `
