@@ -28,7 +28,7 @@ function Start-WatchTimer {
         $MainTimer.Interval = $Ticks
         $Global:SequenceStart = New-Sequence @(
                 {$Mantis.SelectedDomain.Servers.Get()},
-                # {$Mantis.SelectedDomain.DFS.Get()},
+                {$Mantis.SelectedDomain.DFS.Get()},
                 {$Mantis.SelectedDomain.Groups.Get()},
                 {$Mantis.SelectedDomain.Trash.Get()},
                 {$Mantis.SelectedDomain.Users.Get()}
@@ -64,15 +64,14 @@ function Start-WatchTimer {
                                 $TargetName = ($thread.Name -split('_'))[1]
                                 try {
                                     $Target = $Global:ControlHandler[$TargetName]
-                                    $Target.Enabled = $false
-                                    $Target.BeginUpdate()
-                                    $Target.Items.Clear()
+                                    # $Target.BeginUpdate()
+                                    # $Target.Items.Clear()
                                 } catch {
                                     Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
                                 }
                                 Receive-Job $thread.Name -Wait -AutoRemoveJob | Update-ListView -listView $Target
                                 try {
-                                    $Target.Enabled = $true
+                                    # $Target.Enabled = $true
                                     $Global:ControlHandler["ProgressBar_$TargetName"].Visible = $false
                                 } catch {
                                     Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
@@ -142,7 +141,7 @@ function Update-LogsOfRequest {
         $Target.SelectionColor = $color
         $Target.AppendText($Answer)
         $Target.SelectionColor = 'black'
-        $Target.AppendText("]`t=> Repounce de ")
+        $Target.AppendText("]`t-> Reponce de ")
         $Target.SelectionColor = 'Blue'
         $Target.AppendText($SessionAnswer.UserAccount)
         $Target.SelectionColor = 'Black'
@@ -174,37 +173,113 @@ function Start-Loading {
 }
 function Start-Job4RightProperties {
 
-    $Job = Get-Job -Name "Mantis_LVUserADProp_$($mantis.SelectedDomain.Name)" -ea 0
-    if ((!$Job -or $job.PSBeginTime -lt (Get-Date).AddSeconds(-10)) -and $Global:ControlHandler['UserNameGbx'].Text -ne $Global:RDS_LastSelected.NtAccountName){
-        $Job | Remove-Job -Force
-        $Global:ControlHandler['UserNameGbx'].Text = $Global:RDS_LastSelected.NtAccountName
+    if ($Global:ControlHandler['UserNameGbx'].Text -ne $Global:RDS_LastSelected.NtAccountName) {
+        $Job = Get-Job -Name "Mantis_LVUserADProp_$($mantis.SelectedDomain.Name)" -ea 0
+        if ((!$Job -or $job.PSBeginTime -lt (Get-Date).AddSeconds(-10))){
+            $Job | Remove-Job -Force
+            $Global:ControlHandler['UserNameGbx'].Text = $Global:RDS_LastSelected.NtAccountName
+            $Global:ControlHandler['LVUserADProp'].Enabled = $false
+            $Global:ControlHandler['LVUserADProp'].Items.Clear()
 
-        Start-ThreadJob `
-            -Name "Mantis_LVUserADProp_$($mantis.SelectedDomain.Name)" `
-            -InitializationScript {} `
-            -ScriptBlock {
-                param($item)
-                Import-Module ActiveDirectory,PsWrite,RDS.Mantis
-                Import-module PSBright -Function Get-MailInfos,Get-MailProvider,Get-ExchMailProperty -SkipEditionCheck -DisableNameChecking
-                # $item | Write-Object -PassThru
-                $item | Update-MantisUserProp
-            } -ArgumentList $Global:RDS_LastSelected
-    }
+            Start-ThreadJob `
+                -Name "Mantis_LVUserADProp_$($mantis.SelectedDomain.Name)" `
+                -InitializationScript {} `
+                -ScriptBlock {
+                    param($item)
+                    Import-Module ActiveDirectory,PsWrite,RDS.Mantis
+                    Import-module PSBright -Function Get-MailInfos,Get-MailProvider,Get-ExchMailProperty -SkipEditionCheck -DisableNameChecking
+                    # $item | Write-Object -PassThru
+                    $item | Update-MantisUserProp
+                } -ArgumentList $Global:RDS_LastSelected
+        }
+
+        $Job = Get-Job -Name "Mantis_LVUserGroups_$($mantis.SelectedDomain.Name)" -ea 0
+        if ((!$Job -or $job.PSBeginTime -lt (Get-Date).AddSeconds(-10))){
+            $Job | Remove-Job -Force
+            $Global:ControlHandler['UserNameGbx'].Text = $Global:RDS_LastSelected.NtAccountName
+            $Global:ControlHandler['LVUserGroups'].Enabled = $false
+            $Global:ControlHandler['LVUserGroups'].Items.Clear()
     
-    $Job = Get-Job -Name "Mantis_LVServerADProp_$($mantis.SelectedDomain.Name)" -ea 0
-    if ((!$Job -or $job.PSBeginTime -lt (Get-Date).AddSeconds(-10)) -and $Global:ControlHandler['ServerNameGbx'].Text -ne $Global:RDS_LastSelected.NtAccountName){
-        $Job | Remove-Job -Force
-        $Global:ControlHandler['ServerNameGbx'].Text = $Global:RDS_LastSelected.ComputerName
+            Start-ThreadJob `
+                -Name "Mantis_LVUserGroups_$($mantis.SelectedDomain.Name)" `
+                -InitializationScript {} `
+                -ScriptBlock {
+                    param($item)
+                    Import-Module ActiveDirectory,PsWrite,RDS.Mantis
+                    # $item | Write-Object -PassThru
+                    $item | Update-MantisUserGroups
+                } -ArgumentList $Global:RDS_LastSelected
+        }
+    }
 
-        Start-ThreadJob `
-            -Name "Mantis_LVServerADProp_$($mantis.SelectedDomain.Name)" `
-            -InitializationScript {} `
-            -ScriptBlock {
-                param($item)
-                Import-Module ActiveDirectory,PsWrite,RDS.Mantis
-                # $item | Write-Object -PassThru
-                $item | Update-MantisServerProp
-            } -ArgumentList $Global:RDS_LastSelected
+    if ($Global:ControlHandler['ServerNameGbx'].Text -ne $Global:RDS_LastSelected.NtAccountName) {
+        $Job = Get-Job -Name "Mantis_LVServerADProp_$($mantis.SelectedDomain.Name)" -ea 0
+        if ((!$Job -or $job.PSBeginTime -lt (Get-Date).AddSeconds(-10))){
+            $Job | Remove-Job -Force
+            $Global:ControlHandler['ServerNameGbx'].Text = $Global:RDS_LastSelected.ComputerName
+            $Global:ControlHandler['LVServerADProp'].Enabled = $false
+            $Global:ControlHandler['LVServerADProp'].Items.Clear()
+            
+            Start-ThreadJob `
+                -Name "Mantis_LVServerADProp_$($mantis.SelectedDomain.Name)" `
+                -InitializationScript {} `
+                -ScriptBlock {
+                    param($item)
+                    Import-Module ActiveDirectory,PsWrite,RDS.Mantis
+                    # $item | Write-Object -PassThru
+                    $item | Update-MantisServerProp
+                } -ArgumentList $Global:RDS_LastSelected
+        }
+    }
+}
+function Update-MantisUserGroups {
+    [CmdletBinding()]
+    param (
+        [Parameter(Mandatory = $True, ValueFromPipeline = $true)]$Items,
+        $Target = $null # Global:ControlHandler['LVServerADProp']
+    )
+    begin {
+        $LstView = @()
+        $GroupType = @{
+            0x80000002 = 'Security (Global)'
+            0x80000004 = 'Security (DomainLocal)'
+            0x80000008 = 'Security (Universal)'
+            0x00000002 = 'Distribution (Global)'
+            0x00000004 = 'Distribution (DomainLocal)'
+            0x00000008 = 'Distribution (Universal)'
+            0x80000000 = 'Security'
+            0x00000000 = 'Distribution'
+        }
+    }
+    process {
+        try {
+            $Groups = [adsi]"LDAP://$((Get-ADUser ($Items.NtAccountName.split('\')[1]) -Server $Items.domain).DistinguishedName)" | Get-AllMemberOf -Recurse
+            $Groups.MemberOf | ForEach-Object {
+                [PSCustomObject]@{
+                    FirstColValue = $_.properties.name
+                    NextValues    = $_.properties.member.count
+                    Group         = $GroupType[$_.properties.groupType]
+                    Caption       = "Groupe Direct!`nMembres:`n`t$(($_.properties.member | %{($_ -split(','))[0] -replace('CN=')} | Sort-Object -Unique) -join ("`n`t"))"
+                    Tag           = $_.properties.distinguishedName
+
+                }
+            }
+            $Groups.NestedMemberOf | ForEach-Object {
+                [PSCustomObject]@{
+                    FirstColValue = $_.properties.name
+                    NextValues    = $_.properties.member.count
+                    Group         = $GroupType[$_.properties.groupType]
+                    Caption       = "Groupe InDirect!`nMembres:`n`t$(($_.properties.member | %{($_ -split(','))[0] -replace('CN=')} | Sort-Object -Unique) -join ("`n`t"))"
+                    Tag           = $_.properties.distinguishedName
+                    shadow        = $True
+                }
+            }
+        } catch {
+            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+        }
+    }
+    end {
+        $LstView
     }
 }
 function Update-MantisServerProp {
@@ -248,15 +323,16 @@ function Update-MantisUserProp {
     }
     process {
         try {
-            $ADProperties = Get-ADUser ($Items.NtAccountName.split('\')[1]) -Properties * -Server $Items.domain | Convert-AdUsers
-            $ADProperties.Keys | Where-Object {
+            $ADProperties = Get-ADUser ($Items.NtAccountName.split('\')[1]) -Properties * -Server $Items.domain
+            $Properties = $ADProperties | Convert-AdUsers
+            $Properties.Keys | Where-Object {
                 $ADFirst -contains $_
             } | ForEach-Object {
                 [PSCustomObject]@{
                     FirstColValue = $_
-                    NextValues    = $ADProperties.$_ -join (', ')
+                    NextValues    = $Properties.$_ -join (', ')
                     Group         = "Active Directory"
-                    caption       = $ADProperties.$_ -join ("`n")
+                    caption       = $Properties.$_ -join ("`n")
                 }
             }
         } catch {
@@ -264,9 +340,9 @@ function Update-MantisUserProp {
         }
 
         if ($Items.NtAccountName -match '\w.+\\\w.+') { # -and $Global:ControlHandler['UserNameGbx'].Text -ne $Items.NtAccountName
-            $MailBox = Get-MailInfos $Items.NtAccountName
-            if ($MailBox.PrimaryAdress) {
-                try {
+            try {
+                $MailBox = Get-MailInfos $Items.NtAccountName
+                if ($MailBox.PrimaryAdress) {
                     $GrpMBox = 'MailBox' # "MailBox $($Mailbox.Alias) on $($Mailbox.DomainName)"
                     $GrpProvider = "Mail provided by $($MailBox.provider.type)"
                     # Start-Process powershell.exe -ArgumentList "-noexit [void](Import-PSSession (Get-RmExchSession $ad) -wa 0); cls; Get-Mailbox -ResultSize 10 -wa 0; Write-Host -back darkgreen 'Vous disposez maintenant de commande Exchange sur $ad!'"
@@ -294,10 +370,10 @@ function Update-MantisUserProp {
                     }
                     [PSCustomObject]@{
                         FirstColValue = 'AdressBook'
-                        NextValues    = $ADProperties.AddressBookMembers | % {(($_ -split (','))[0] -split ('='))[-1]}
-                        Tag           = $ADProperties.AddressBookMembers
+                        NextValues    = $Properties.AddressBookMembers | % {(($_ -split (','))[0] -split ('='))[-1]}
+                        Tag           = $Properties.AddressBookMembers
                         Group         = $GrpProvider
-                        Caption       = ($ADProperties.AddressBookMembers | % {(($_ -split (','))[0] -split ('='))[-1]}) -join("`n")
+                        Caption       = ($Properties.AddressBookMembers | % {(($_ -split (','))[0] -split ('='))[-1]}) -join("`n")
                     }
                     
 
@@ -385,21 +461,21 @@ function Update-MantisUserProp {
                             }
                         }
                     }
-                } catch {
-                    Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Calller%" '', $_ error
                 }
+            } catch {
+                Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber) %Calller%" "", $_ error
             }
         }
 
         try {
-            $ADProperties.Keys | Where-Object {
+            $Properties.Keys | Where-Object {
                 $ADEnd -contains $_
             } | ForEach-Object {
                 [PSCustomObject]@{
                     FirstColValue = $_
-                    NextValues    = $ADProperties.$_ -join (', ')
+                    NextValues    = $Properties.$_ -join (', ')
                     Group         = "Other Properties"
-                    caption       = $ADProperties.$_ -join ("`n")
+                    caption       = $Properties.$_ -join ("`n")
                 }
             }
         } catch {
@@ -438,7 +514,7 @@ function Update-MantisSrv {
                 }
             [PSCustomObject]@{
                 FirstColValue = $_.Name
-                NextValues = @($_.IP,$_.OperatingSystem,$_.InstallDate,$_.RDS.ProductVersion)
+                NextValues = @($_.IP,($_.OperatingSystem -replace('Windows Server ')),$_.InstallDate,$_.RDS.ProductVersion)
                 Group   = $Grp
                 Caption = $(if($_.RDS.ServerBroker){"Broker [$($_.RDS.ServerBroker)]"} else {''})
                 Status  = $Null
@@ -726,7 +802,7 @@ function Convert-DGV_RDS_Row {
                 IPAddress     = $($Row.cells[5].value)
                 ClientName    = $($Row.cells[6].value)
                 Protocole     = $($Row.cells[7].value)
-                handler       = $(if ($handler) { $Row }else { $null }) # la ligne dans le DataGridView
+                handler       = $Row # la ligne dans le DataGridView
             }
         }
     }
@@ -737,7 +813,7 @@ function Convert-DGV_RDS_Row {
 function Convert-DGV_AD_Row {
     [CmdletBinding()]
     param (
-        [Parameter(ValueFromPipeline = $true)]$Rows = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows 
+        [Parameter(ValueFromPipeline = $true)]$Rows = $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows 
     )
     
     begin {}
@@ -747,10 +823,10 @@ function Convert-DGV_AD_Row {
             [pscustomobject][ordered]@{
                 Domain        = $mantis.SelectedDomain.name
                 NtAccountName = $($Row.cells[0].value)
-                email     = $($Row.cells[2].value)
-                OU     = $($Row.cells[7].value)
-                Sid     = $($Row.cells[8].value)
-                handler       = $(if ($handler) { $Row }else { $null }) # la ligne dans le DataGridView
+                email         = $($Row.cells[2].value)
+                OU            = $($Row.cells[7].value)
+                Sid           = $($Row.cells[8].value)
+                handler       = $Row # la ligne dans le DataGridView
             }
         }
     }
@@ -860,7 +936,7 @@ function Send-MessageToRDSSessions {
             if ($All) {
                 $CassiaSession = Get-RdSession -ComputerName ($Computers | Sort-Object -Unique)
             }
-            $footer = "$(whoami), Service SI"
+            $footer = "$(whoami), Service Informatique"
             $CassiaSession | Send-RdSession -Message $Prompt.Value -Footer $footer
         }
     }

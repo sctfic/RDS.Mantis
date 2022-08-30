@@ -242,7 +242,7 @@ class ServersCollector {
                         ActiveDirectory\Get-ADComputer -Filter {operatingSystem -Like '*Windows Server*'} `
                             -Properties OperatingSystem,operatingSystem,WhenCreated,whenCreated `
                             -Server $Domain | ForEach-Object -Parallel {
-                                Import-Module PsWrite
+                                # Import-Module PsWrite
                                 Import-Module PsBright -SkipEditionCheck -DisableNameChecking # -Function Test-TcpPort,Get-Registry,Get-RegBase
                             # function Write-LogStep { }
                             # 'DNSHostName',$_.DNSHostName | Write-Object -PassThru
@@ -400,11 +400,11 @@ class Mantis {
         $this.SelectedDomain.Trash.Reset()
         $this.SelectedDomain.Dfs.Reset()
 
-        # $this.SelectedDomain.Servers.Get()
-        # $this.SelectedDomain.Users.Get()
-        # $this.SelectedDomain.Groups.Get()
-        # $this.SelectedDomain.Trash.Get()
-        # $this.SelectedDomain.Dfs.Get()
+        $this.SelectedDomain.Servers.Get()
+        $this.SelectedDomain.Groups.Get()
+        $this.SelectedDomain.Trash.Get()
+        $this.SelectedDomain.Dfs.Get()
+        $this.SelectedDomain.Users.Get()
         return $this.SelectedDomain
     }
 }

@@ -100,6 +100,43 @@ function Convert-AdUsers {
     end {
     }
 }
-
+function Get-AllMemberOf {
+    Param(
+        [Parameter(ValueFromPipeline = $true)]$ADSIObject,
+        [switch]$Recurse,
+        $Groups = $null
+    )
+    begin {
+    }
+    process {
+        if ($null -eq $Groups) {
+            $Groups = [PSCustomObject]@{
+                MemberOf       = @()
+                NestedMemberOf = @()
+            }
+            Foreach ($Memberof in $ADSIObject.properties.memberof) {
+                $Group = [adsi]"LDAP://$MemberOf"
+                $Groups.Memberof += $group
+                if ($Group.properties.memberof -and $Recurse) {
+                    $Groups = $group | Get-ADSIMemberOf -Groups $Groups -Recurse
+                }
+            }
+        } else {
+            Foreach ($Memberof in $ADSIObject.properties.memberof) {
+                $path = "LDAP://$MemberOf"
+                if ($Groups.MemberOf.path -contains $path) {
+                } elseif ($Groups.NestedMemberOf.path -contains $path) {
+                } else {
+                    $Group = [adsi]$path
+                    $Groups.NestedMemberof += $group
+                    $Groups = $group | Get-ADSIMemberOf -Groups $Groups -Recurse
+                }
+            }
+        }
+        $Groups
+    }
+    end {
+    }
+}
 # PSWinForm-Builder\New-WinForm -DefinitionFile "$PSScriptRoot\GUI\MantisForm.psd1" -Verbose -PreloadModules PsWrite,rds.mantis
 

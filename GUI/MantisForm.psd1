@@ -139,7 +139,7 @@
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
                                                     # $global:RDS_Selected = $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row
-                                                    if ($Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Rowd | Stop-RDSSessions) {
+                                                    if ($Global:ControlHandler['DataGridView_Sessions'].SelectedRows | Convert-DGV_RDS_Row | Stop-RDSSessions) {
                                                         $Global:ControlHandler['DataGridView_Sessions'].SelectedRows | ForEach-Object {
                                                             $Global:ControlHandler['DataGridView_Sessions'].Rows.Remove($_)
                                                         }
@@ -332,14 +332,36 @@
                                             ControlType = 'ToolStripMenuItem'
                                             ShortcutKeys = 'Delete'
                                             ShortcutKeyDisplayString = 'Supp.'
-                                            Text        = 'Supprimer le compte'
+                                            Text        = 'Desactiver le compte'
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
-                                                    $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows | ForEach-Object {
+                                                    Convert-DGV_AD_Row | ForEach-Object {
                                                         try {
-                                                            $_.Tag | Remove-ADUser -Confirm
-                                                            $Global:ControlHandler['DataGridView_ADAccounts'].Rows.Remove($_)
+                                                            $_.Sid | Disable-ADAccount -Confirm:$false -server $_.domain
+                                                            $_.handler.DefaultCellStyle.ForeColor = [system.Drawing.Color]::DimGray
+                                                            $_.handler.cells[4].Value = 'Disabled'
+                                                        } catch {
+                                                            Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
+                                            )
+                                        },
+                                        @{
+                                            ControlType = 'ToolStripMenuItem'
+                                            ShortcutKeys = 'Shift, Delete'
+                                            ShortcutKeyDisplayString = 'Shift Supp.'
+                                            Text        = 'Supprimer le compte (et les mails)'
+                                            Events      = @{
+                                                Click    = [Scriptblock]{ # Event
+                                                    Invoke-EventTracer $this.Text 'Click'
+                                                    Convert-DGV_AD_Row | ForEach-Object {
+                                                        try {
+                                                            $_.Sid | Remove-ADUser -Confirm:$false -server $_.domain
+                                                            $Global:ControlHandler['DataGridView_ADAccounts'].Rows.Remove($_.handler)
                                                         } catch {
                                                             Write-LogStep -prefix "L.$($_.InvocationInfo.ScriptLineNumber)" "", $_ error
                                                         }
@@ -356,11 +378,13 @@
                                             ShortcutKeys = 'Ctrl+D'
                                             ShortcutKeyDisplayString = 'Ctrl+D'
                                             Text        = "Dupliquer"
-                                            Enabled     = $False
                                             Events      = @{
                                                 Click    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this.Text 'Click'
-                                                    $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows
+                                                    $modele = $Global:ControlHandler['DataGridView_ADAccounts'].SelectedRows[-1] | Convert-DGV_AD_Row
+                                                    $DuplicateScript = (Get-Childitem -Path ([Environment]::GetFolderPath("MyDocuments")) -Include Duplicate-User_GUI.ps1 -Recurse | Sort-Object LastWriteTime -Descending)[0].FullName
+                                                    & $DuplicateScript -user_model $modele.NtAccountName
+
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
@@ -862,7 +886,7 @@
         @{  ControlType = 'Panel'
             Name        = 'PanelRight'
             Dock        = 'Right'
-            Width       = 320
+            Width       = 330
             Events      = @{
                 Enter = [Scriptblock]{ # Event
                     Invoke-EventTracer $this 'Enter'
@@ -1070,7 +1094,7 @@
                                     Events      = @{}
                                     Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
                                         @{  ControlType = 'ListView'
-                                            Name             = 'ListView_LVUserGroups'
+                                            Name             = 'LVUserGroups'
                                             Dock             = 'Fill'
                                             # Activation       = 'OneClick'
                                             FullRowSelect    = $True
@@ -1079,37 +1103,22 @@
                                             ShowItemToolTips = $True
                                             View             = 'Details'
                                             Events      = @{
-                                                Enter    = @{ # Event
-                                                    Type = 'Thread'
-                                                    ScriptBlock = [Scriptblock]{
-                                                        param($ControlHandler, $ControllerName, $EventName)
-                                                        $Tabs = $ControlHandler['TabsRessources']
-                                                        $ListView = $($ControlHandler["$($Tabs.SelectedTab.Name)_LV"])
-                                                    }
-                                                }
                                                 ColumnClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'ColumnClick'
                                                     Set-ListViewSorted  -listView $this -column $_.Column
-                                                }
-                                                Click    = [Scriptblock]{ # Event
-                                                    Invoke-EventTracer $this 'Click' # left and right but not on empty area
                                                 }
                                                 DoubleClick    = [Scriptblock]{ # Event
                                                     Invoke-EventTracer $this 'DoubleClick'
                                                 }
                                             }
                                             Childrens   = @( # FirstControl need {Dock = 'Fill'} but the following will be [Top, Bottom, Left, Right]
-                                                @{  Text        = 'Col1'
+                                                @{  Text        = 'Name'
                                                     ControlType = 'ColumnHeader'
-                                                    Width        = 140
+                                                    Width        = 180
                                                 },
-                                                @{  Text        = 'Col2'
+                                                @{  Text        = 'Membre'
                                                     ControlType = 'ColumnHeader'
-                                                    Width        = 120
-                                                }
-                                                @{  Text        = 'Col3'
-                                                    ControlType = 'ColumnHeader'
-                                                    Width        = 150
+                                                    Width        = 40
                                                 }
                                             )
                                         },
